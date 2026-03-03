@@ -12,6 +12,8 @@ log = "0.4"
 bytemuck = { version = "1.16", features = ["derive"] }
 image = "0.25.9"
 glam = { version = "0.32.0", features = ["bytemuck", "mint"] }
+notify = "8.2.0"
+anyhow = "1.0.102"
 
 [lib]
 name = "hybrid_renderer"

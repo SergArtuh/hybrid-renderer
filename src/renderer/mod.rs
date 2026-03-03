@@ -50,6 +50,8 @@ impl Renderer {
     }
 
     pub fn render(&self, render_context: &RenderContext, frame_data: &FrameData) {
+        // TODO: add debug mode
+        self.pipeline_manager.check_shader_updates();
         let mut frame_target = self.begin_frame(render_context);
 
         self.camera_manager

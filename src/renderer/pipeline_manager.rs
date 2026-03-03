@@ -1,4 +1,9 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
+
+use notify::{Event, RecursiveMode, Watcher};
 
 use crate::{
     core::{
@@ -8,10 +13,29 @@ use crate::{
     renderer::layout_interface::LayoutInterface,
 };
 
+struct ShaderWatcher {
+    _watcher: notify::RecommendedWatcher,
+    receiver: std::sync::mpsc::Receiver<notify::Result<Event>>,
+}
+
+impl ShaderWatcher {
+    fn new(shader_path: &Path) -> anyhow::Result<Self> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut watcher = notify::recommended_watcher(tx)?;
+        watcher.watch(shader_path, RecursiveMode::Recursive)?;
+
+        Ok(Self {
+            _watcher: watcher,
+            receiver: rx,
+        })
+    }
+}
+
 pub struct PipelineManager {
     modules: HashMap<String, wgpu::ShaderModule>,
     pipelines: HashMap<MaterialType, wgpu::RenderPipeline>,
     base_shaders_path: PathBuf,
+    shader_watcher: Option<ShaderWatcher>,
 }
 
 impl PipelineManager {
@@ -21,11 +45,18 @@ impl PipelineManager {
             .join("src")
             .join("renderer")
             .join("shaders");
+        // TODO: add debug mode
+        let shader_watcher = ShaderWatcher::new(&base_shaders_path);
+        let shader_watcher = match shader_watcher {
+            Ok(watcher) => Some(watcher),
+            Err(_) => None,
+        };
 
         Self {
             modules: HashMap::new(),
             pipelines: HashMap::new(),
             base_shaders_path,
+            shader_watcher,
         }
     }
 
@@ -96,4 +127,30 @@ impl PipelineManager {
             .get(&material.kind())
             .expect("Pipeline not registered for material type")
     }
+
+    pub fn check_shader_updates(&self) {
+        if let Some(watcher) = &self.shader_watcher {
+            for res in watcher.receiver.try_iter() {
+                match res {
+                    Ok(event) => println!("event: {:?}", event),
+                    Err(e) => println!("watch error: {:?}", e),
+                }
+            }
+        }
+    }
+
+    // fn shader_watcher(shader_path: &Path) -> Result<()> {
+    //     let (tx, rx) = std::sync::mpsc::channel();
+    //     let mut watcher = notify::recommended_watcher(tx)?;
+    //     watcher.watch(shader_path, RecursiveMode::Recursive)?;
+
+    //     for res in rx {
+    //         match res {
+    //             Ok(event) => println!("event: {:?}", event),
+    //             Err(e) => println!("watch error: {:?}", e),
+    //         }
+    //     }
+
+    //     Ok(())
+    // }
 }
