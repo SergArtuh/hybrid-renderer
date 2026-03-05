@@ -14,6 +14,8 @@ use crate::{
     renderer::layout_interface::LayoutInterface,
 };
 
+use anyhow::Context;
+
 type LayoutFetcher = fn() -> &'static [wgpu::VertexBufferLayout<'static>];
 
 #[derive(Clone, Debug)]
@@ -139,7 +141,9 @@ impl PipelineManager {
 
         let render_pipeline = self.build_pipeline(&pipeline_definition, context, interface);
 
-        self.pipelines.insert(material_type, render_pipeline);
+        if let Ok(render_pipeline) = render_pipeline {
+            self.pipelines.insert(material_type, render_pipeline);
+        }
 
         if let Some(w) = &mut self.shader_watcher {
             w.add_pipeline(pipeline_definition);
@@ -151,13 +155,22 @@ impl PipelineManager {
         pipeline_definition: &PipelineDefinition,
         context: &RenderContext,
         interface: &LayoutInterface,
-    ) -> wgpu::RenderPipeline {
-        let source = std::fs::read_to_string(pipeline_definition.shader_path.clone())
-            .expect("Shader not found");
+    ) -> Result<wgpu::RenderPipeline, anyhow::Error> {
+        context
+            .device
+            .push_error_scope(wgpu::ErrorFilter::Validation);
+        let shader_path = &pipeline_definition.shader_path;
+        let source = std::fs::read_to_string(shader_path)
+            .with_context(|| format!("Failed to read shader file at {:?}", shader_path))?;
+
+        let label = shader_path
+            .to_str()
+            .context("Shader path contains invalid UTF-8 characters")?;
+
         let shader_module = context
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some(pipeline_definition.shader_path.to_str().unwrap()),
+                label: Some(label),
                 source: wgpu::ShaderSource::Wgsl(source.into()),
             });
 
@@ -207,7 +220,17 @@ impl PipelineManager {
             shader_module,
         );
 
-        render_pipeline
+        let maybe_error = pollster::block_on(context.device.pop_error_scope());
+
+        if let Some(error) = maybe_error {
+            println!(
+                "Pipeline Validation Error: {:?}, {:?}",
+                pipeline_definition.shader_path, error
+            );
+            return Err(anyhow::anyhow!("Pipeline Validation Error: {:?}", error));
+        }
+
+        Ok(render_pipeline)
     }
 
     pub fn get_pipeline(&self, material: &Material) -> &wgpu::RenderPipeline {
@@ -227,10 +250,15 @@ impl PipelineManager {
         for pipeline_definition in modified_pipelines {
             let pipeline = self.build_pipeline(&pipeline_definition, context, interface);
 
-            // TODO: fallback to old pipeline if compilation fails
-
-            self.pipelines
-                .insert(pipeline_definition.material_type, pipeline);
+            if let Ok(pipeline) = pipeline {
+                self.pipelines
+                    .insert(pipeline_definition.material_type, pipeline);
+            } else {
+                println!(
+                    "Failed to recompile pipeline for material type {:?}. Keeping old pipeline.",
+                    pipeline_definition.material_type
+                );
+            }
 
             let path = if let Ok(relative_path) = pipeline_definition
                 .shader_path
