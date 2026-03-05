@@ -19,9 +19,6 @@ impl ForwardPass {
         frame_data: &'a FrameData,
     ) {
         for model_instance in frame_data.model_instances.iter() {
-            rpass.set_pipeline(&pipeline_manager.get_pipeline(&model_instance.model.material));
-            rpass.set_bind_group(0, &camera_manager.bind_group, &[]);
-
             let pipeline = pipeline_manager.get_pipeline(&model_instance.model.material);
 
             rpass.set_pipeline(&pipeline);

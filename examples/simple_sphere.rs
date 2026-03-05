@@ -117,7 +117,7 @@ pub fn run() {
     stage.add_model(model_instance);
 
     let render_context = RenderContext::new(device, queue, surface, config);
-    let renderer = Renderer::new(&render_context);
+    let mut renderer = Renderer::new(&render_context);
 
     let mut last_time = Instant::now();
     let mut frame_time = 0.0;

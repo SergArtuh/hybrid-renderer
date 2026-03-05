@@ -19,7 +19,7 @@ pub struct Renderer {
     forward_pass: ForwardPass,
     camera_manager: CameraManager,
     pipeline_manager: PipelineManager,
-    //layout_interface: LayoutInterface,
+    layout_interface: LayoutInterface,
     depth_texture_view: wgpu::TextureView,
 }
 
@@ -35,7 +35,6 @@ impl Renderer {
             render_context,
             &layout_interface,
             "pbr_material.wgsl",
-            &[Vertex::desc()],
         );
 
         let forward_pass = ForwardPass::default();
@@ -44,14 +43,15 @@ impl Renderer {
             forward_pass,
             camera_manager,
             pipeline_manager,
-            //layout_interface,
+            layout_interface,
             depth_texture_view,
         }
     }
 
-    pub fn render(&self, render_context: &RenderContext, frame_data: &FrameData) {
+    pub fn render(&mut self, render_context: &RenderContext, frame_data: &FrameData) {
         // TODO: add debug mode
-        self.pipeline_manager.check_shader_updates();
+        self.pipeline_manager
+            .check_shader_updates(render_context, &self.layout_interface);
         let mut frame_target = self.begin_frame(render_context);
 
         self.camera_manager

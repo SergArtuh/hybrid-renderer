@@ -1,5 +1,7 @@
 use wgpu::util::DeviceExt;
 
+use crate::core::vertex::Vertex;
+
 use super::texture::Texture;
 use super::texture_builder::TextureBuilder;
 
@@ -25,7 +27,7 @@ impl Material {
 
 pub trait MaterialTrait {
     const TYPE: MaterialType;
-    //fn get_bind_group(&self) -> &wgpu::BindGroup;
+    fn get_layout() -> &'static [wgpu::VertexBufferLayout<'static>];
 }
 
 #[repr(C)]
@@ -43,6 +45,10 @@ pub struct SpriteMaterial {
 
 impl MaterialTrait for SpriteMaterial {
     const TYPE: MaterialType = MaterialType::Sprite;
+    fn get_layout() -> &'static [wgpu::VertexBufferLayout<'static>] {
+        const LAYOUT: &[wgpu::VertexBufferLayout<'static>] = &[Vertex::LAYOUT];
+        LAYOUT
+    }
 }
 
 impl SpriteMaterial {
@@ -101,4 +107,8 @@ pub struct PhysicalMaterial {
 
 impl MaterialTrait for PhysicalMaterial {
     const TYPE: MaterialType = MaterialType::Physical;
+    fn get_layout() -> &'static [wgpu::VertexBufferLayout<'static>] {
+        const LAYOUT: &[wgpu::VertexBufferLayout<'static>] = &[Vertex::LAYOUT];
+        LAYOUT
+    }
 }
