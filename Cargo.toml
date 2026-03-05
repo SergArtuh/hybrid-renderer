@@ -3,6 +3,10 @@ name = "hybrid-renderer"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["shader-hot-reload"]
+shader-hot-reload = ["dep:notify"]
+
 [dependencies]
 winit = "0.29"
 wgpu = "0.20"
@@ -12,7 +16,7 @@ log = "0.4"
 bytemuck = { version = "1.16", features = ["derive"] }
 image = "0.25.9"
 glam = { version = "0.32.0", features = ["bytemuck", "mint"] }
-notify = "8.2.0"
+notify = { version = "8.2.0", optional = true }
 anyhow = "1.0.102"
 
 [lib]

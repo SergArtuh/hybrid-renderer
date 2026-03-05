@@ -97,6 +97,7 @@ pub struct PipelineManager {
     modules: HashMap<String, wgpu::ShaderModule>,
     pipelines: HashMap<MaterialType, wgpu::RenderPipeline>,
     base_shaders_path: PathBuf,
+    #[cfg(feature = "shader-hot-reload")]
     shader_watcher: Option<ShaderWatcher>,
 }
 
@@ -107,8 +108,10 @@ impl PipelineManager {
             .join("src")
             .join("renderer")
             .join("shaders");
-        // TODO: add debug mode
+
+        #[cfg(feature = "shader-hot-reload")]
         let shader_watcher = ShaderWatcher::new(&base_shaders_path);
+        #[cfg(feature = "shader-hot-reload")]
         let shader_watcher = match shader_watcher {
             Ok(watcher) => Some(watcher),
             Err(_) => None,
@@ -118,6 +121,7 @@ impl PipelineManager {
             modules: HashMap::new(),
             pipelines: HashMap::new(),
             base_shaders_path,
+            #[cfg(feature = "shader-hot-reload")]
             shader_watcher,
         }
     }
@@ -145,6 +149,7 @@ impl PipelineManager {
             self.pipelines.insert(material_type, render_pipeline);
         }
 
+        #[cfg(feature = "shader-hot-reload")]
         if let Some(w) = &mut self.shader_watcher {
             w.add_pipeline(pipeline_definition);
         }
@@ -239,39 +244,43 @@ impl PipelineManager {
             .expect("Pipeline not registered for material type")
     }
 
+    #[allow(unused_variables)]
     pub fn check_shader_updates(&mut self, context: &RenderContext, interface: &LayoutInterface) {
-        let modified_pipelines = if let Some(watcher) = &mut self.shader_watcher {
-            watcher.process_events();
-            watcher.get_modified_pipelines_definitions()
-        } else {
-            Vec::new()
-        };
-
-        for pipeline_definition in modified_pipelines {
-            let pipeline = self.build_pipeline(&pipeline_definition, context, interface);
-
-            if let Ok(pipeline) = pipeline {
-                self.pipelines
-                    .insert(pipeline_definition.material_type, pipeline);
+        #[cfg(feature = "shader-hot-reload")]
+        {
+            let modified_pipelines = if let Some(watcher) = &mut self.shader_watcher {
+                watcher.process_events();
+                watcher.get_modified_pipelines_definitions()
             } else {
+                Vec::new()
+            };
+
+            for pipeline_definition in modified_pipelines {
+                let pipeline = self.build_pipeline(&pipeline_definition, context, interface);
+
+                if let Ok(pipeline) = pipeline {
+                    self.pipelines
+                        .insert(pipeline_definition.material_type, pipeline);
+                } else {
+                    println!(
+                        "Failed to recompile pipeline for material type {:?}. Keeping old pipeline.",
+                        pipeline_definition.material_type
+                    );
+                }
+
+                let path = if let Ok(relative_path) = pipeline_definition
+                    .shader_path
+                    .strip_prefix(&self.base_shaders_path)
+                {
+                    relative_path
+                } else {
+                    &pipeline_definition.shader_path
+                };
                 println!(
-                    "Failed to recompile pipeline for material type {:?}. Keeping old pipeline.",
-                    pipeline_definition.material_type
+                    "Shader modified {:?}, pipeline recompiled: {:?}",
+                    path, pipeline_definition.material_type
                 );
             }
-
-            let path = if let Ok(relative_path) = pipeline_definition
-                .shader_path
-                .strip_prefix(&self.base_shaders_path)
-            {
-                relative_path
-            } else {
-                &pipeline_definition.shader_path
-            };
-            println!(
-                "Shader modified {:?}, pipeline recompiled: {:?}",
-                path, pipeline_definition.material_type
-            );
         }
     }
 }
