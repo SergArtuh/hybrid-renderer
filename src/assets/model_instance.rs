@@ -2,7 +2,7 @@ use crate::core::model::Model;
 
 #[derive(Clone)]
 pub struct ModelInstance<'a> {
-    pub model: &'a Model,
+    pub model: &'a Model, // Arc<Model>
     pub transform: glam::Mat4,
 }
 

@@ -7,6 +7,8 @@ pub struct Camera {
     pub target: Vec3,
     pub aspect: f32,
     pub fov: f32,
+    pub near: f32,
+    pub far: f32,
 }
 
 impl Camera {
@@ -16,6 +18,8 @@ impl Camera {
             target: Vec3::ZERO,
             aspect: 1.0,
             fov: 45.0,
+            near: 0.1,
+            far: 100.0,
         }
     }
 
@@ -34,9 +38,19 @@ impl Camera {
         self
     }
 
+    pub fn with_near(mut self, near: f32) -> Self {
+        self.near = near;
+        self
+    }
+
+    pub fn with_far(mut self, far: f32) -> Self {
+        self.far = far;
+        self
+    }
+
     pub fn calc_matrix(&self) -> Mat4 {
         let view = Mat4::look_at_rh(self.position, self.target, Vec3::Y);
-        let proj = Mat4::perspective_rh(self.fov, self.aspect, 0.1, 100.0);
+        let proj = Mat4::perspective_rh(self.fov, self.aspect, self.near, self.far);
         proj * view
     }
 }

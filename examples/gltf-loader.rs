@@ -1,4 +1,5 @@
 use hybrid_renderer::assets::model_instance::ModelInstance;
+use hybrid_renderer::util::gltf_loader::load_gltf_models;
 use std::sync::Arc;
 use std::time::Instant;
 use wgpu::util::DeviceExt;
@@ -7,16 +8,12 @@ use winit::event_loop::EventLoop;
 use winit::window::WindowBuilder;
 
 use hybrid_renderer::assets::camera::Camera;
-use hybrid_renderer::core::material::{Material, PhysicalMaterial};
 use hybrid_renderer::core::math::Vec3;
-use hybrid_renderer::core::mesh::Mesh;
-use hybrid_renderer::core::model::Model;
 use hybrid_renderer::core::render_context::RenderContext;
 use hybrid_renderer::renderer::Renderer;
 use hybrid_renderer::stage::Stage;
-use hybrid_renderer::util::geometry_generator::MeshUtil;
 
-const CAMERA_DISTANCE: f32 = 50.0;
+const CAMERA_DISTANCE: f32 = 250.0;
 
 pub fn run() {
     let event_loop = EventLoop::new().unwrap();
@@ -88,18 +85,15 @@ pub fn run() {
 
     surface.configure(&device, &config);
 
-    let camera = Camera::new(Vec3::new(0.0, 0.0, CAMERA_DISTANCE))
-        .with_target(Vec3::new(0.0, 0.0, 0.0))
+    let camera = Camera::new(Vec3::new(0.0, 150.0, CAMERA_DISTANCE))
+        .with_target(Vec3::new(0.0, 75.0, 0.0))
         .with_fov(45.0)
+        .with_near(0.1)
+        .with_far(1000.0)
         .with_aspect(size.width as f32 / size.height as f32);
 
-    //let sphere = Mesh::new_sphere(1.0, 32, 32);
-    let mesh_data = MeshUtil::new_cube(0.8);
-    let mesh = Mesh::from_data(&device, &mesh_data);
-
-    let material = PhysicalMaterial::default();
-    let model = Model::new(mesh, Material::Physical(material));
-    let model_instance = ModelInstance::new(&model, glam::Mat4::IDENTITY);
+    let models = load_gltf_models("assets/models/duck.glb", &device).unwrap();
+    let model_instance = ModelInstance::new(&models[0], glam::Mat4::IDENTITY);
 
     let mut stage = Stage::new(camera);
     stage.add_model(model_instance);
