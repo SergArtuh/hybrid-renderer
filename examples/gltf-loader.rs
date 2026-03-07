@@ -1,4 +1,4 @@
-use hybrid_renderer::assets::model_instance::ModelInstance;
+use hybrid_renderer::assets::model::Model;
 use hybrid_renderer::util::gltf_loader::load_gltf_models;
 use std::sync::Arc;
 use std::time::Instant;
@@ -13,7 +13,8 @@ use hybrid_renderer::core::render_context::RenderContext;
 use hybrid_renderer::renderer::Renderer;
 use hybrid_renderer::stage::Stage;
 
-const CAMERA_DISTANCE: f32 = 250.0;
+//const CAMERA_DISTANCE: f32 = 250.0;
+const CAMERA_DISTANCE: f32 = 50.0;
 
 pub fn run() {
     let event_loop = EventLoop::new().unwrap();
@@ -85,18 +86,23 @@ pub fn run() {
 
     surface.configure(&device, &config);
 
-    let camera = Camera::new(Vec3::new(0.0, 150.0, CAMERA_DISTANCE))
-        .with_target(Vec3::new(0.0, 75.0, 0.0))
+    let camera = Camera::new(Vec3::new(0.0, 0.0, CAMERA_DISTANCE))
+        .with_target(Vec3::new(0.0, 0.0, 0.0))
         .with_fov(45.0)
         .with_near(0.1)
         .with_far(1000.0)
         .with_aspect(size.width as f32 / size.height as f32);
 
-    let models = load_gltf_models("assets/models/duck.glb", &device).unwrap();
-    let model_instance = ModelInstance::new(&models[0], glam::Mat4::IDENTITY);
-
     let mut stage = Stage::new(camera);
-    stage.add_model(model_instance);
+
+    //let models = load_gltf_models("assets/models/duck.glb", &device).unwrap();
+    //let models = load_gltf_models("assets/models/camera/Camera_01_8k.gltf", &device).unwrap();
+    let models = load_gltf_models("assets/models/lantern.glb", &device).unwrap();
+
+    for model_node in &models.scene_roots {
+        let model = Model::new(Arc::clone(model_node), glam::Mat4::IDENTITY);
+        stage.add_model(model);
+    }
 
     let render_context = RenderContext::new(device, queue, surface, config);
     let mut renderer = Renderer::new(&render_context);

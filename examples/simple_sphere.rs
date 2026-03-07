@@ -1,4 +1,5 @@
-use hybrid_renderer::assets::model_instance::ModelInstance;
+use hybrid_renderer::assets::model::Model;
+use hybrid_renderer::core::model_node::ModelNode;
 use std::sync::Arc;
 use std::time::Instant;
 use wgpu::util::DeviceExt;
@@ -10,7 +11,6 @@ use hybrid_renderer::assets::camera::Camera;
 use hybrid_renderer::core::material::{Material, PhysicalMaterial};
 use hybrid_renderer::core::math::Vec3;
 use hybrid_renderer::core::mesh::Mesh;
-use hybrid_renderer::core::model::Model;
 use hybrid_renderer::core::render_context::RenderContext;
 use hybrid_renderer::renderer::Renderer;
 use hybrid_renderer::stage::Stage;
@@ -98,11 +98,11 @@ pub fn run() {
     let mesh = Mesh::from_data(&device, &mesh_data);
 
     let material = PhysicalMaterial::default();
-    let model = Model::new(mesh, Material::Physical(material));
-    let model_instance = ModelInstance::new(&model, glam::Mat4::IDENTITY);
+    let model_node = ModelNode::new(mesh, Material::Physical(material));
+    let model = Model::new(Arc::new(model_node), glam::Mat4::IDENTITY);
 
     let mut stage = Stage::new(camera);
-    stage.add_model(model_instance);
+    stage.add_model(model);
 
     let render_context = RenderContext::new(device, queue, surface, config);
     let mut renderer = Renderer::new(&render_context);

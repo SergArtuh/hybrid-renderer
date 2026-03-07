@@ -1,6 +1,17 @@
-use crate::{assets::model_instance::ModelInstance, core::camera::CameraUniform};
+use crate::core::camera::CameraUniform;
+use crate::core::material::Material;
+use crate::core::mesh::Mesh;
+use std::sync::Arc;
 
-pub struct FrameData<'a> {
+pub enum RenderItem {
+    StaticMesh {
+        mesh: Arc<Mesh>,
+        material: Arc<Material>,
+        world_matrix: glam::Mat4,
+    },
+}
+
+pub struct FrameData {
     pub camera_uniform: CameraUniform,
-    pub model_instances: Vec<ModelInstance<'a>>,
+    pub render_items: Vec<RenderItem>,
 }

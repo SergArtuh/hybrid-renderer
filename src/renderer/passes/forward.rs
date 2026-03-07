@@ -1,6 +1,6 @@
 use crate::{
-    renderer::camera_manager::CameraManager, renderer::pipeline_manager::PipelineManager,
-    stage::frame_data::FrameData,
+    renderer::{camera_manager::CameraManager, pipeline_manager::PipelineManager},
+    stage::frame_data::{FrameData, RenderItem},
 };
 
 #[derive(Default)]
@@ -18,18 +18,23 @@ impl ForwardPass {
         camera_manager: &'a CameraManager,
         frame_data: &'a FrameData,
     ) {
-        for model_instance in frame_data.model_instances.iter() {
-            let pipeline = pipeline_manager.get_pipeline(&model_instance.model.material);
+        for renderable in frame_data.render_items.iter() {
+            match renderable {
+                RenderItem::StaticMesh {
+                    mesh,
+                    material,
+                    world_matrix,
+                } => {
+                    let pipeline = pipeline_manager.get_pipeline(&material);
 
-            rpass.set_pipeline(&pipeline);
-            rpass.set_vertex_buffer(0, model_instance.model.mesh.vertex_buffer.slice(..));
-            rpass.set_index_buffer(
-                model_instance.model.mesh.index_buffer.slice(..),
-                wgpu::IndexFormat::Uint32,
-            );
-            rpass.set_bind_group(0, &camera_manager.bind_group, &[]);
+                    rpass.set_pipeline(&pipeline);
+                    rpass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+                    rpass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    rpass.set_bind_group(0, &camera_manager.bind_group, &[]);
 
-            rpass.draw_indexed(0..model_instance.model.mesh.index_count, 0, 0..1);
+                    rpass.draw_indexed(0..mesh.index_count, 0, 0..1);
+                }
+            }
         }
     }
 }

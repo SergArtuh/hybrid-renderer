@@ -1,14 +1,25 @@
 use crate::core::material::{Material, PhysicalMaterial};
 use crate::core::mesh::{Mesh, MeshData};
-use crate::core::model::Model;
+use crate::core::model_node::ModelNode;
 use std::path::Path;
+use std::sync::Arc;
+
+pub struct GltfAsset {
+    pub name: String,
+    //pub nodes: HashMap<String, Arc<ModelNode>>,
+    pub scene_roots: Vec<Arc<ModelNode>>,
+}
 
 pub fn load_gltf_models(
     path: impl AsRef<Path>,
     device: &wgpu::Device,
-) -> anyhow::Result<Vec<Model>> {
+) -> anyhow::Result<GltfAsset> {
     let (document, buffers, _) = gltf::import(path)?;
-    let mut models = Vec::new();
+
+    let mut gltf_asset = GltfAsset {
+        name: String::from("test"), // TODO: Use the actual name of the model
+        scene_roots: Vec::new(),
+    };
 
     for mesh in document.meshes() {
         for primitive in mesh.primitives() {
@@ -38,9 +49,11 @@ pub fn load_gltf_models(
             let mesh = Mesh::from_data(device, &mesh_data);
             let material = Material::Physical(PhysicalMaterial::default());
 
-            models.push(Model::new(mesh, material));
+            gltf_asset
+                .scene_roots
+                .push(Arc::new(ModelNode::new(mesh, material)));
         }
     }
 
-    Ok(models)
+    Ok(gltf_asset)
 }
