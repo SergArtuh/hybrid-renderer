@@ -11,6 +11,14 @@ pub enum RenderItem {
     },
 }
 
+impl RenderItem {
+    pub fn world_matrix(&self) -> &glam::Mat4 {
+        match self {
+            RenderItem::StaticMesh { world_matrix, .. } => world_matrix,
+        }
+    }
+}
+
 pub struct FrameData {
     pub camera_uniform: CameraUniform,
     pub render_items: Vec<RenderItem>,

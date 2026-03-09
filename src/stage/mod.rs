@@ -29,7 +29,11 @@ impl Stage {
         let mut render_items = Vec::new();
         for model in &self.models {
             let mut model_render_items = Vec::new();
-            Self::flatten_node(&model.root_node, &mut model_render_items);
+            Self::flatten_node(
+                &model.root_node,
+                &mut model_render_items,
+                glam::Mat4::IDENTITY,
+            );
             render_items.extend(model_render_items);
         }
         FrameData {
@@ -40,17 +44,23 @@ impl Stage {
         }
     }
 
-    fn flatten_node(node: &ModelNode, render_items: &mut Vec<RenderItem>) {
-        let world_matrix = node.local_transform;
+    fn flatten_node(
+        node: &ModelNode,
+        render_items: &mut Vec<RenderItem>,
+        parent_world_matrix: glam::Mat4,
+    ) {
+        let current_world_matrix = parent_world_matrix * node.local_transform;
+
         if let (Some(mesh), Some(material)) = (&node.mesh, &node.material) {
             render_items.push(RenderItem::StaticMesh {
                 mesh: Arc::clone(mesh),
                 material: Arc::clone(material),
-                world_matrix: world_matrix,
+                world_matrix: current_world_matrix,
             });
         }
+
         for child in &node.children {
-            Self::flatten_node(child, render_items);
+            Self::flatten_node(child, render_items, current_world_matrix);
         }
     }
 }
