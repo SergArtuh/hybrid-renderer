@@ -1,5 +1,6 @@
 pub mod camera;
 pub mod material;
+pub mod material_builder;
 pub mod math;
 pub mod mesh;
 pub mod model_node;

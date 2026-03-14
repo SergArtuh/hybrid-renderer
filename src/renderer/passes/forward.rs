@@ -41,6 +41,7 @@ impl ForwardPass {
                     rpass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                     rpass.set_bind_group(0, &camera_manager.bind_group, &[]);
                     rpass.set_bind_group(1, &model_manager.bind_group, &[offset]);
+                    rpass.set_bind_group(2, &material.bind_group(), &[]);
 
                     rpass.draw_indexed(0..mesh.index_count, 0, 0..1);
                 }

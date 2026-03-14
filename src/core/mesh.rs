@@ -11,6 +11,13 @@ pub struct MeshData {
 
 impl MeshData {
     pub fn to_vertices(&self) -> Vec<Vertex> {
+        println!(
+            "MeshData: {}, {}, {}, {}",
+            self.vertices.len(),
+            self.normals.len(),
+            self.uvs.len(),
+            self.indices.len()
+        );
         self.vertices
             .iter()
             .enumerate()

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{
     core::{material::PhysicalMaterial, render_context::RenderContext, vertex::Vertex},
     renderer::{
@@ -6,6 +8,7 @@ use crate::{
         pipeline_manager::PipelineManager,
     },
     stage::frame_data::FrameData,
+    util::gltf_loader::SceneLoader,
 };
 
 pub mod camera_manager;
@@ -22,13 +25,13 @@ pub struct Renderer {
     camera_manager: CameraManager,
     model_manager: ModelManager,
     pipeline_manager: PipelineManager,
-    layout_interface: LayoutInterface,
+    layout_interface: Arc<LayoutInterface>,
     depth_texture_view: wgpu::TextureView,
 }
 
 impl Renderer {
     pub fn new(render_context: &RenderContext) -> Self {
-        let layout_interface = LayoutInterface::new(render_context);
+        let layout_interface = Arc::new(LayoutInterface::new(render_context));
         let camera_manager = CameraManager::new(render_context, &layout_interface.global);
         let model_manager = ModelManager::new(render_context, &layout_interface.model);
         let depth_texture_view = Self::create_depth_texture(render_context);
@@ -77,6 +80,10 @@ impl Renderer {
         }
 
         self.end_frame(render_context, frame_target);
+    }
+
+    pub fn create_scene_loader<'a>(&'a self, render_context: &'a RenderContext) -> SceneLoader<'a> {
+        SceneLoader::new(render_context, Arc::clone(&self.layout_interface))
     }
 
     fn begin_frame(&self, render_context: &RenderContext) -> FrameTarget {

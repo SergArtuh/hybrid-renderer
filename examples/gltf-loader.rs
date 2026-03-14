@@ -1,8 +1,6 @@
 use hybrid_renderer::assets::model::Model;
-use hybrid_renderer::util::gltf_loader::load_gltf_models;
 use std::sync::Arc;
 use std::time::Instant;
-use wgpu::util::DeviceExt;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::window::WindowBuilder;
@@ -14,7 +12,7 @@ use hybrid_renderer::renderer::Renderer;
 use hybrid_renderer::stage::Stage;
 
 //const CAMERA_DISTANCE: f32 = 250.0;
-const CAMERA_DISTANCE: f32 = 50.0;
+const CAMERA_DISTANCE: f32 = 5.0;
 
 pub fn run() {
     let event_loop = EventLoop::new().unwrap();
@@ -95,17 +93,20 @@ pub fn run() {
 
     let mut stage = Stage::new(camera);
 
+    let render_context = RenderContext::new(device, queue, surface, config);
+    let mut renderer = Renderer::new(&render_context);
+
     //let models = load_gltf_models("assets/models/duck.glb", &device).unwrap();
-    //let models = load_gltf_models("assets/models/camera/Camera_01_8k.gltf", &device).unwrap();
-    let models = load_gltf_models("assets/models/lantern.glb", &device).unwrap();
+    let models = renderer
+        .create_scene_loader(&render_context)
+        .load_gltf_models("assets/models/porsche.glb")
+        .unwrap();
+    //let models = load_gltf_models("assets/models/lantern.glb", &device).unwrap();
 
     for model_node in &models.scene_roots {
         let model = Model::new(Arc::clone(model_node), glam::Mat4::IDENTITY);
         stage.add_model(model);
     }
-
-    let render_context = RenderContext::new(device, queue, surface, config);
-    let mut renderer = Renderer::new(&render_context);
 
     let mut last_time = Instant::now();
     let mut frame_time = 0.0;

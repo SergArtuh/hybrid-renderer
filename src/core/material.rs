@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use wgpu::util::DeviceExt;
 
 use crate::core::vertex::Vertex;
@@ -21,6 +23,13 @@ impl Material {
         match self {
             Material::Sprite(_) => MaterialType::Sprite,
             Material::Physical(_) => MaterialType::Physical,
+        }
+    }
+    pub fn bind_group(&self) -> &wgpu::BindGroup {
+        match self {
+            // TODO: implement sprite bind group
+            Material::Sprite(sprite_material) => todo!(),
+            Material::Physical(physical_material) => &physical_material.bind_group,
         }
     }
 }
@@ -94,15 +103,14 @@ impl SpriteMaterial {
         );
     }
 }
-#[derive(Default)]
-pub struct PhysicalMaterial {
-    // pub albedo: Handle<Texture>, // Основной цвет
-    // pub normal: Handle<Texture>, // Карта нормалей
-    // pub metallic_roughness: Handle<Texture>,
-    // pub base_color: [f32; 4],
 
-    // // Ссылка на BindGroup, которую создаст Renderer
-    // pub bind_group: Option<wgpu::BindGroup>,
+pub struct PhysicalMaterial {
+    pub base_color: Arc<wgpu::TextureView>,
+    pub normal: Arc<wgpu::TextureView>,
+    pub metallic_roughness: Arc<wgpu::TextureView>,
+    pub occlusion: Arc<wgpu::TextureView>,
+    pub emissive: Arc<wgpu::TextureView>,
+    pub bind_group: wgpu::BindGroup,
 }
 
 impl MaterialTrait for PhysicalMaterial {
