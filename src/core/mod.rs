@@ -1,8 +1,9 @@
 pub mod camera;
 pub mod material;
+pub mod material_builder;
 pub mod math;
 pub mod mesh;
-pub mod model;
+pub mod model_node;
 pub mod render_context;
 pub mod texture;
 pub mod texture_builder;

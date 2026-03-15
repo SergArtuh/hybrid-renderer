@@ -1,8 +1,12 @@
+use std::sync::Arc;
+
 use crate::{
-    core::{material::PhysicalMaterial, render_context::RenderContext, vertex::Vertex},
+    assets::asset_loader::AssetLoader,
+    core::{material::PhysicalMaterial, render_context::RenderContext},
     renderer::{
         camera_manager::CameraManager, frame_target::FrameTarget,
-        layout_interface::LayoutInterface, pipeline_manager::PipelineManager,
+        layout_interface::LayoutInterface, model_manager::ModelManager,
+        pipeline_manager::PipelineManager,
     },
     stage::frame_data::FrameData,
 };
@@ -10,6 +14,7 @@ use crate::{
 pub mod camera_manager;
 pub mod frame_target;
 pub mod layout_interface;
+pub mod model_manager;
 pub mod passes;
 pub mod pipeline_manager;
 
@@ -18,16 +23,17 @@ use passes::forward::ForwardPass;
 pub struct Renderer {
     forward_pass: ForwardPass,
     camera_manager: CameraManager,
+    model_manager: ModelManager,
     pipeline_manager: PipelineManager,
-    layout_interface: LayoutInterface,
+    layout_interface: Arc<LayoutInterface>,
     depth_texture_view: wgpu::TextureView,
 }
 
 impl Renderer {
     pub fn new(render_context: &RenderContext) -> Self {
-        let layout_interface = LayoutInterface::new(render_context);
+        let layout_interface = Arc::new(LayoutInterface::new(render_context));
         let camera_manager = CameraManager::new(render_context, &layout_interface.global);
-        // let pipeline_layout = layout_interface.create_pipeline_layout(render_context);
+        let model_manager = ModelManager::new(render_context, &layout_interface.model);
         let depth_texture_view = Self::create_depth_texture(render_context);
 
         let mut pipeline_manager = PipelineManager::new();
@@ -42,6 +48,7 @@ impl Renderer {
         Self {
             forward_pass,
             camera_manager,
+            model_manager,
             pipeline_manager,
             layout_interface,
             depth_texture_view,
@@ -49,13 +56,15 @@ impl Renderer {
     }
 
     pub fn render(&mut self, render_context: &RenderContext, frame_data: &FrameData) {
-        // TODO: add debug mode
         self.pipeline_manager
             .check_shader_updates(render_context, &self.layout_interface);
         let mut frame_target = self.begin_frame(render_context);
 
         self.camera_manager
             .update_buffer(render_context, &frame_data.camera_uniform);
+
+        self.model_manager
+            .update_buffer(render_context, &frame_data.render_items);
 
         {
             let mut render_pass =
@@ -65,11 +74,16 @@ impl Renderer {
                 &mut render_pass,
                 &self.pipeline_manager,
                 &self.camera_manager,
+                &self.model_manager,
                 frame_data,
             );
         }
 
         self.end_frame(render_context, frame_target);
+    }
+
+    pub fn create_asset_loader<'a>(&'a self, render_context: &'a RenderContext) -> AssetLoader<'a> {
+        AssetLoader::new(render_context, Arc::clone(&self.layout_interface))
     }
 
     fn begin_frame(&self, render_context: &RenderContext) -> FrameTarget {

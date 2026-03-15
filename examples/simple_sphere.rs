@@ -1,20 +1,20 @@
-use hybrid_renderer::assets::model_instance::ModelInstance;
+use hybrid_renderer::assets::model::Model;
+use hybrid_renderer::core::model_node::ModelNode;
 use std::sync::Arc;
 use std::time::Instant;
-use wgpu::util::DeviceExt;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::EventLoop;
 use winit::window::WindowBuilder;
 
 use hybrid_renderer::assets::camera::Camera;
-use hybrid_renderer::core::material::{Material, PhysicalMaterial};
 use hybrid_renderer::core::math::Vec3;
 use hybrid_renderer::core::mesh::Mesh;
-use hybrid_renderer::core::model::Model;
 use hybrid_renderer::core::render_context::RenderContext;
 use hybrid_renderer::renderer::Renderer;
 use hybrid_renderer::stage::Stage;
 use hybrid_renderer::util::geometry_generator::MeshUtil;
+
+const CAMERA_DISTANCE: f32 = 5.0;
 
 pub fn run() {
     let event_loop = EventLoop::new().unwrap();
@@ -86,38 +86,26 @@ pub fn run() {
 
     surface.configure(&device, &config);
 
-    let camera = Camera::new(Vec3::new(0.0, 0.0, 5.0))
+    let render_context = RenderContext::new(device, queue, surface, config);
+    let mut renderer = Renderer::new(&render_context);
+
+    let camera = Camera::new(Vec3::new(0.0, 0.0, CAMERA_DISTANCE))
         .with_target(Vec3::new(0.0, 0.0, 0.0))
         .with_fov(45.0)
         .with_aspect(size.width as f32 / size.height as f32);
 
     //let sphere = Mesh::new_sphere(1.0, 32, 32);
     let mesh_data = MeshUtil::new_cube(0.8);
-    let vertices = mesh_data.to_vertices();
-    let indices = &mesh_data.indices;
+    let mesh = Mesh::from_data(&render_context.device, &mesh_data);
 
-    let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Vertex Buffer"),
-        contents: bytemuck::cast_slice(&vertices),
-        usage: wgpu::BufferUsages::VERTEX,
-    });
-
-    let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Index Buffer"),
-        contents: bytemuck::cast_slice(indices),
-        usage: wgpu::BufferUsages::INDEX,
-    });
-
-    let mesh = Mesh::new(vertex_buffer, index_buffer, indices.len() as u32);
-    let material = PhysicalMaterial::default();
-    let model = Model::new(mesh, Material::Physical(material));
-    let model_instance = ModelInstance::new(&model, glam::Mat4::IDENTITY);
+    let material = renderer
+        .create_asset_loader(&render_context)
+        .create_default_material();
+    let model_node = ModelNode::new(mesh, material);
+    let model = Model::new(Arc::new(model_node), glam::Mat4::IDENTITY);
 
     let mut stage = Stage::new(camera);
-    stage.add_model(model_instance);
-
-    let render_context = RenderContext::new(device, queue, surface, config);
-    let mut renderer = Renderer::new(&render_context);
+    stage.add_model(model);
 
     let mut last_time = Instant::now();
     let mut frame_time = 0.0;
@@ -136,8 +124,8 @@ pub fn run() {
                 last_time = now;
                 frame_time += delta_time.as_secs_f32();
 
-                let camera_x = f32::sin(frame_time) * 5.0;
-                let camera_z = f32::cos(frame_time) * 5.0;
+                let camera_x = f32::sin(frame_time) * CAMERA_DISTANCE;
+                let camera_z = f32::cos(frame_time) * CAMERA_DISTANCE;
 
                 stage.main_camera.position.x = camera_x;
                 stage.main_camera.position.z = camera_z;

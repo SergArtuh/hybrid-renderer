@@ -1,9 +1,57 @@
+use std::sync::Arc;
+
+use gltf::image::Format;
+
 use super::texture::Texture;
+
+pub trait IntoWgpuFormat {
+    fn into_wgpu_srgb(self) -> wgpu::TextureFormat;
+    fn into_wgpu_linear(self) -> wgpu::TextureFormat;
+}
+
+impl IntoWgpuFormat for wgpu::TextureFormat {
+    fn into_wgpu_srgb(self) -> wgpu::TextureFormat {
+        self
+    }
+
+    fn into_wgpu_linear(self) -> wgpu::TextureFormat {
+        self
+    }
+}
+
+impl IntoWgpuFormat for Format {
+    fn into_wgpu_srgb(self) -> wgpu::TextureFormat {
+        match self {
+            Format::R8G8B8 => wgpu::TextureFormat::Rgba8UnormSrgb,
+            Format::R8G8B8A8 => wgpu::TextureFormat::Rgba8UnormSrgb,
+            _ => panic!("Unsupported format to srgb: {:?}", self),
+        }
+    }
+
+    fn into_wgpu_linear(self) -> wgpu::TextureFormat {
+        match self {
+            Format::R8 => wgpu::TextureFormat::R8Unorm,
+            Format::R8G8 => wgpu::TextureFormat::Rg8Unorm,
+            Format::R8G8B8 => wgpu::TextureFormat::Rgba8Unorm,
+            Format::R8G8B8A8 => wgpu::TextureFormat::Rgba8Unorm,
+            Format::R16 => wgpu::TextureFormat::R16Unorm,
+            Format::R16G16 => wgpu::TextureFormat::Rg16Unorm,
+            Format::R16G16B16 => wgpu::TextureFormat::Rgba16Unorm,
+            Format::R16G16B16A16 => wgpu::TextureFormat::Rgba16Unorm,
+            _ => panic!("Unsupported format to linear: {:?}", self),
+        }
+    }
+}
 
 pub enum TextureSource<'a> {
     Empty,
     Bytes(&'a [u8]),
     Image(image::DynamicImage),
+    Raw {
+        pixels: &'a [u8],
+        width: u32,
+        height: u32,
+    },
 }
 
 pub struct TextureBuilder<'a> {
@@ -42,8 +90,12 @@ impl<'a> TextureBuilder<'a> {
         self
     }
 
-    pub fn with_format(mut self, format: wgpu::TextureFormat) -> Self {
-        self.format = format;
+    pub fn with_format<F: IntoWgpuFormat>(mut self, format: F, srgb: bool) -> Self {
+        self.format = if srgb {
+            format.into_wgpu_srgb()
+        } else {
+            format.into_wgpu_linear()
+        };
         self
     }
 
@@ -73,6 +125,15 @@ impl<'a> TextureBuilder<'a> {
         self
     }
 
+    pub fn from_raw(mut self, pixels: &'a [u8], width: u32, height: u32) -> Self {
+        self.source = TextureSource::Raw {
+            pixels,
+            width,
+            height,
+        };
+        self
+    }
+
     pub fn with_size(mut self, width: u32, height: u32) -> Self {
         self.size = Some((width, height));
         self
@@ -89,18 +150,40 @@ impl<'a> TextureBuilder<'a> {
                 let img = image::load_from_memory(bytes).expect("Failed to load image from memory");
                 let rgba = img.to_rgba8();
                 let (w, h) = rgba.dimensions();
-                (w, h, Some(rgba))
+                (w, h, rgba.into_raw())
             }
             TextureSource::Image(img) => {
                 let rgba = img.to_rgba8();
                 let (w, h) = rgba.dimensions();
-                (w, h, Some(rgba))
+                (w, h, rgba.into_raw())
             }
+            TextureSource::Raw {
+                pixels,
+                width,
+                height,
+            } => {
+                let src_channels = pixels.len() / (width * height) as usize;
+                match src_channels {
+                    3 => {
+                        let rgba = pixels
+                            .chunks_exact(3)
+                            .flat_map(|rgb| [rgb[0], rgb[1], rgb[2], 255])
+                            .collect();
+                        (width, height, rgba)
+                    }
+                    1 => (width, height, pixels.to_vec()),
+                    2 => (width, height, pixels.to_vec()),
+                    4 => (width, height, pixels.to_vec()),
+                    _ => panic!("Unsupported raw texture channel count: {}", src_channels),
+                }
+            }
+
             TextureSource::Empty => {
                 let (w, h) = self.size.expect(
                     "Size must be provided for empty texture if no bytes/image are provided",
                 );
-                (w, h, None)
+                let default_gray = vec![128u8; (w * h * 4) as usize];
+                (w, h, default_gray)
             }
         };
 
@@ -121,23 +204,22 @@ impl<'a> TextureBuilder<'a> {
             view_formats: &[],
         });
 
-        if let Some(rgba) = rgba {
-            self.queue.write_texture(
-                wgpu::ImageCopyTexture {
-                    texture: &texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                &rgba,
-                wgpu::ImageDataLayout {
-                    offset: 0,
-                    bytes_per_row: Some(4 * width),
-                    rows_per_image: Some(height),
-                },
-                texture_size,
-            );
-        }
+        let block_size = Self::get_block_size(self.format);
+        self.queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &rgba,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(block_size * width),
+                rows_per_image: Some(height),
+            },
+            texture_size,
+        );
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let sampler = self.device.create_sampler(&wgpu::SamplerDescriptor {
@@ -151,11 +233,21 @@ impl<'a> TextureBuilder<'a> {
         });
 
         Texture {
-            texture,
-            view,
-            sampler,
+            texture: Arc::new(texture),
+            view: Arc::new(view),
+            sampler: Arc::new(sampler),
             width,
             height,
+        }
+    }
+
+    fn get_block_size(format: wgpu::TextureFormat) -> u32 {
+        match format {
+            wgpu::TextureFormat::R8Unorm => 1,
+            wgpu::TextureFormat::Rg8Unorm => 2,
+            wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Rgba8UnormSrgb => 4,
+            wgpu::TextureFormat::Rgba16Unorm => 8,
+            _ => 4,
         }
     }
 }

@@ -1,0 +1,143 @@
+use hybrid_renderer::assets::model::Model;
+use std::sync::Arc;
+use std::time::Instant;
+use winit::event::{Event, WindowEvent};
+use winit::event_loop::EventLoop;
+use winit::window::WindowBuilder;
+
+use hybrid_renderer::assets::camera::Camera;
+use hybrid_renderer::core::math::Vec3;
+use hybrid_renderer::core::render_context::RenderContext;
+use hybrid_renderer::renderer::Renderer;
+use hybrid_renderer::stage::Stage;
+
+//const CAMERA_DISTANCE: f32 = 250.0;
+const CAMERA_DISTANCE: f32 = 5.0;
+
+pub fn run() {
+    let event_loop = EventLoop::new().unwrap();
+    let window = Arc::new(
+        WindowBuilder::new()
+            .with_title("wgpu Minimal")
+            .build(&event_loop)
+            .unwrap(),
+    );
+
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::all(),
+        ..Default::default()
+    });
+
+    let surface = instance.create_surface(window.clone()).unwrap();
+
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::HighPerformance,
+        compatible_surface: Some(&surface),
+        force_fallback_adapter: false,
+    }))
+    .unwrap();
+
+    let surface_caps = surface.get_capabilities(&adapter);
+
+    let info = adapter.get_info();
+    println!("GPU: {}, API: {:?}", info.name, info.backend);
+
+    let (device, queue) = pollster::block_on(adapter.request_device(
+        &wgpu::DeviceDescriptor {
+            label: Some("My Primary Device"),
+
+            required_features: wgpu::Features::POLYGON_MODE_LINE,
+
+            required_limits: wgpu::Limits {
+                max_bind_groups: 4,
+                ..wgpu::Limits::default()
+            },
+        },
+        None,
+    ))
+    .unwrap();
+
+    let size = window.inner_size();
+
+    let surface_format = surface_caps
+        .formats
+        .iter()
+        .copied()
+        .filter(|f| f.is_srgb())
+        .next()
+        .unwrap_or(surface_caps.formats[0]);
+
+    let config = wgpu::SurfaceConfiguration {
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        format: surface_format,
+        width: size.width,
+        height: size.height,
+        present_mode: surface_caps.present_modes[0],
+        alpha_mode: surface_caps.alpha_modes[0],
+        view_formats: vec![],
+        desired_maximum_frame_latency: 2,
+    };
+
+    surface.configure(&device, &config);
+
+    let camera = Camera::new(Vec3::new(0.0, 0.0, CAMERA_DISTANCE))
+        .with_target(Vec3::new(0.0, 0.0, 0.0))
+        .with_fov(45.0)
+        .with_near(0.1)
+        .with_far(1000.0)
+        .with_aspect(size.width as f32 / size.height as f32);
+
+    let mut stage = Stage::new(camera);
+
+    let render_context = RenderContext::new(device, queue, surface, config);
+    let mut renderer = Renderer::new(&render_context);
+
+    //let models = load_gltf_models("assets/models/duck.glb", &device).unwrap();
+    let models = renderer
+        .create_asset_loader(&render_context)
+        .load_gltf_models("assets/models/porsche.glb")
+        .unwrap();
+    //let models = load_gltf_models("assets/models/lantern.glb", &device).unwrap();
+
+    for model_node in &models.scene_roots {
+        let model = Model::new(Arc::clone(model_node), glam::Mat4::IDENTITY);
+        stage.add_model(model);
+    }
+
+    let mut last_time = Instant::now();
+    let mut frame_time = 0.0;
+    event_loop
+        .run(move |event, elwt| match event {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                window_id,
+            } if window_id == window.id() => elwt.exit(),
+            Event::WindowEvent {
+                event: WindowEvent::RedrawRequested,
+                window_id,
+            } if window_id == window.id() => {
+                let now = Instant::now();
+                let delta_time = now.duration_since(last_time);
+                last_time = now;
+                frame_time += delta_time.as_secs_f32();
+
+                let camera_x = f32::sin(frame_time) * CAMERA_DISTANCE;
+                let camera_z = f32::cos(frame_time) * CAMERA_DISTANCE;
+
+                stage.main_camera.position.x = camera_x;
+                stage.main_camera.position.z = camera_z;
+                let frame_data = stage.make_frame_data();
+                renderer.render(&render_context, &frame_data);
+            }
+            Event::AboutToWait => {
+                window.request_redraw();
+            }
+            _ => (),
+        })
+        .unwrap();
+}
+
+fn main() {
+    env_logger::init();
+    run();
+}
