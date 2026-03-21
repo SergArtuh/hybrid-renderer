@@ -70,6 +70,8 @@ impl SpriteMaterial {
         let texture = TextureBuilder::new(device, queue)
             .from_bytes(atlas_texture_bytes)
             .with_size(columns, rows)
+            //.with_format(wgpu::TextureFormat::Rgba32Float, false)
+            .with_filter(wgpu::FilterMode::Nearest, wgpu::FilterMode::Nearest)
             .build();
 
         let config = SpriteSheetUniform {

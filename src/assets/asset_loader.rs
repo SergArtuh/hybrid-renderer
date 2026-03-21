@@ -4,7 +4,7 @@ use crate::core::mesh::{Mesh, MeshData};
 use crate::core::model_node::ModelNode;
 use crate::core::render_context::RenderContext;
 use crate::core::texture::Texture;
-use crate::core::texture_builder::TextureBuilder;
+use crate::core::texture_builder::{ComponentPrecision, TextureBuilder, TextureChannels};
 use crate::renderer::layout_interface::LayoutInterface;
 use std::path::Path;
 use std::sync::Arc;
@@ -169,11 +169,28 @@ impl<'a> AssetLoader<'a> {
             .enumerate()
             .map(|(i, img_data)| {
                 let label = image_names[i].as_deref().unwrap_or("gltf_texture_unnamed");
+                let channels = match img_data.format {
+                    gltf::image::Format::R8 => TextureChannels::R,
+                    gltf::image::Format::R8G8 => TextureChannels::RG,
+                    gltf::image::Format::R8G8B8 => TextureChannels::RGB,
+                    gltf::image::Format::R8G8B8A8 => TextureChannels::RGBA,
+                    _ => panic!("Unsupported format: {:?}", img_data.format),
+                };
+
+                let precision = match img_data.format {
+                    gltf::image::Format::R8 => ComponentPrecision::U8,
+                    gltf::image::Format::R8G8 => ComponentPrecision::U8,
+                    gltf::image::Format::R8G8B8 => ComponentPrecision::U8,
+                    gltf::image::Format::R8G8B8A8 => ComponentPrecision::U8,
+                    _ => panic!("Unsupported format: {:?}", img_data.format),
+                };
+
                 Arc::new(
                     TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
                         .from_raw(&img_data.pixels, img_data.width, img_data.height)
                         .with_label(label)
-                        .with_format(img_data.format, false)
+                        .with_channels(channels)
+                        .with_precision(precision)
                         .build(),
                 )
             })

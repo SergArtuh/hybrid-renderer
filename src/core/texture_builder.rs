@@ -1,47 +1,5 @@
-use std::sync::Arc;
-
-use gltf::image::Format;
-
 use super::texture::Texture;
-
-pub trait IntoWgpuFormat {
-    fn into_wgpu_srgb(self) -> wgpu::TextureFormat;
-    fn into_wgpu_linear(self) -> wgpu::TextureFormat;
-}
-
-impl IntoWgpuFormat for wgpu::TextureFormat {
-    fn into_wgpu_srgb(self) -> wgpu::TextureFormat {
-        self
-    }
-
-    fn into_wgpu_linear(self) -> wgpu::TextureFormat {
-        self
-    }
-}
-
-impl IntoWgpuFormat for Format {
-    fn into_wgpu_srgb(self) -> wgpu::TextureFormat {
-        match self {
-            Format::R8G8B8 => wgpu::TextureFormat::Rgba8UnormSrgb,
-            Format::R8G8B8A8 => wgpu::TextureFormat::Rgba8UnormSrgb,
-            _ => panic!("Unsupported format to srgb: {:?}", self),
-        }
-    }
-
-    fn into_wgpu_linear(self) -> wgpu::TextureFormat {
-        match self {
-            Format::R8 => wgpu::TextureFormat::R8Unorm,
-            Format::R8G8 => wgpu::TextureFormat::Rg8Unorm,
-            Format::R8G8B8 => wgpu::TextureFormat::Rgba8Unorm,
-            Format::R8G8B8A8 => wgpu::TextureFormat::Rgba8Unorm,
-            Format::R16 => wgpu::TextureFormat::R16Unorm,
-            Format::R16G16 => wgpu::TextureFormat::Rg16Unorm,
-            Format::R16G16B16 => wgpu::TextureFormat::Rgba16Unorm,
-            Format::R16G16B16A16 => wgpu::TextureFormat::Rgba16Unorm,
-            _ => panic!("Unsupported format to linear: {:?}", self),
-        }
-    }
-}
+use std::sync::Arc;
 
 pub enum TextureSource<'a> {
     Empty,
@@ -54,11 +12,72 @@ pub enum TextureSource<'a> {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComponentPrecision {
+    U8,
+    F32,
+    Auto,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TextureChannels {
+    R,
+    RG,
+    RGB,
+    RGBA,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TextureFormatDescriptor {
+    pub channels: TextureChannels,
+    pub precision: ComponentPrecision,
+    pub is_srgb: bool,
+}
+
+enum RawTextureData {
+    U8(Vec<u8>),
+    F32(Vec<f32>),
+}
+
+trait IntoWgpuFormat {
+    fn into_format_descriptor(self) -> TextureFormatDescriptor;
+}
+
+impl IntoWgpuFormat for wgpu::TextureFormat {
+    fn into_format_descriptor(self) -> TextureFormatDescriptor {
+        let channels = match self {
+            wgpu::TextureFormat::R8Unorm => TextureChannels::R,
+            wgpu::TextureFormat::Rg8Unorm => TextureChannels::RG,
+            wgpu::TextureFormat::Rgba8Unorm => TextureChannels::RGBA,
+            wgpu::TextureFormat::Rgba8UnormSrgb => TextureChannels::RGBA,
+            wgpu::TextureFormat::Rgba32Float => TextureChannels::RGBA,
+            _ => panic!("Unsupported format to linear: {:?}", self),
+        };
+        let precision = match self {
+            wgpu::TextureFormat::R8Unorm => ComponentPrecision::U8,
+            wgpu::TextureFormat::Rg8Unorm => ComponentPrecision::U8,
+            wgpu::TextureFormat::Rgba8Unorm => ComponentPrecision::U8,
+            wgpu::TextureFormat::Rgba8UnormSrgb => ComponentPrecision::U8,
+            wgpu::TextureFormat::Rgba32Float => ComponentPrecision::F32,
+            _ => panic!("Unsupported format to linear: {:?}", self),
+        };
+        let is_srgb = match self {
+            wgpu::TextureFormat::Rgba8UnormSrgb => true,
+            _ => false,
+        };
+        TextureFormatDescriptor {
+            channels,
+            precision,
+            is_srgb,
+        }
+    }
+}
+
 pub struct TextureBuilder<'a> {
     device: &'a wgpu::Device,
     queue: &'a wgpu::Queue,
     label: Option<&'a str>,
-    format: wgpu::TextureFormat,
+    format: TextureFormatDescriptor,
     mag_filter: wgpu::FilterMode,
     min_filter: wgpu::FilterMode,
     mipmap_filter: wgpu::FilterMode,
@@ -74,7 +93,11 @@ impl<'a> TextureBuilder<'a> {
             device,
             queue,
             label: None,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            format: TextureFormatDescriptor {
+                channels: TextureChannels::RGBA,
+                precision: ComponentPrecision::U8,
+                is_srgb: false,
+            },
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             mipmap_filter: wgpu::FilterMode::Nearest,
@@ -90,12 +113,23 @@ impl<'a> TextureBuilder<'a> {
         self
     }
 
-    pub fn with_format<F: IntoWgpuFormat>(mut self, format: F, srgb: bool) -> Self {
-        self.format = if srgb {
-            format.into_wgpu_srgb()
-        } else {
-            format.into_wgpu_linear()
-        };
+    pub fn with_precision(mut self, precision: ComponentPrecision) -> Self {
+        self.format.precision = precision;
+        self
+    }
+
+    pub fn with_channels(mut self, channels: TextureChannels) -> Self {
+        self.format.channels = channels;
+        self
+    }
+
+    pub fn with_srgb(mut self, is_srgb: bool) -> Self {
+        self.format.is_srgb = is_srgb;
+        self
+    }
+
+    pub fn with_wgpu_format(mut self, format: wgpu::TextureFormat) -> Self {
+        self.format = format.into_format_descriptor();
         self
     }
 
@@ -144,48 +178,9 @@ impl<'a> TextureBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Texture {
-        let (width, height, rgba) = match self.source {
-            TextureSource::Bytes(bytes) => {
-                let img = image::load_from_memory(bytes).expect("Failed to load image from memory");
-                let rgba = img.to_rgba8();
-                let (w, h) = rgba.dimensions();
-                (w, h, rgba.into_raw())
-            }
-            TextureSource::Image(img) => {
-                let rgba = img.to_rgba8();
-                let (w, h) = rgba.dimensions();
-                (w, h, rgba.into_raw())
-            }
-            TextureSource::Raw {
-                pixels,
-                width,
-                height,
-            } => {
-                let src_channels = pixels.len() / (width * height) as usize;
-                match src_channels {
-                    3 => {
-                        let rgba = pixels
-                            .chunks_exact(3)
-                            .flat_map(|rgb| [rgb[0], rgb[1], rgb[2], 255])
-                            .collect();
-                        (width, height, rgba)
-                    }
-                    1 => (width, height, pixels.to_vec()),
-                    2 => (width, height, pixels.to_vec()),
-                    4 => (width, height, pixels.to_vec()),
-                    _ => panic!("Unsupported raw texture channel count: {}", src_channels),
-                }
-            }
-
-            TextureSource::Empty => {
-                let (w, h) = self.size.expect(
-                    "Size must be provided for empty texture if no bytes/image are provided",
-                );
-                let default_gray = vec![128u8; (w * h * 4) as usize];
-                (w, h, default_gray)
-            }
-        };
+    pub fn build(mut self) -> Texture {
+        let source = std::mem::replace(&mut self.source, TextureSource::Empty);
+        let (width, height, rgba) = self.resolve_image_data(source);
 
         let texture_size = wgpu::Extent3d {
             width,
@@ -193,18 +188,26 @@ impl<'a> TextureBuilder<'a> {
             depth_or_array_layers: 1,
         };
 
+        let (format, channel_count, byte_per_chanel) = self.get_texture_format_description(&rgba);
+
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: self.label,
             size: texture_size,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: self.format,
+            format,
             usage: self.usage,
             view_formats: &[],
         });
 
-        let block_size = Self::get_block_size(self.format);
+        let channels = channel_count * byte_per_chanel;
+
+        let rgba_data = match &rgba {
+            RawTextureData::U8(data) => bytemuck::cast_slice(&data),
+            RawTextureData::F32(data) => bytemuck::cast_slice(&data),
+        };
+
         self.queue.write_texture(
             wgpu::ImageCopyTexture {
                 texture: &texture,
@@ -212,10 +215,10 @@ impl<'a> TextureBuilder<'a> {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            &rgba,
+            rgba_data,
             wgpu::ImageDataLayout {
                 offset: 0,
-                bytes_per_row: Some(block_size * width),
+                bytes_per_row: Some(channels * width),
                 rows_per_image: Some(height),
             },
             texture_size,
@@ -241,13 +244,142 @@ impl<'a> TextureBuilder<'a> {
         }
     }
 
-    fn get_block_size(format: wgpu::TextureFormat) -> u32 {
-        match format {
-            wgpu::TextureFormat::R8Unorm => 1,
-            wgpu::TextureFormat::Rg8Unorm => 2,
-            wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Rgba8UnormSrgb => 4,
-            wgpu::TextureFormat::Rgba16Unorm => 8,
-            _ => 4,
+    fn get_texture_format_description(
+        &self,
+        rgba: &RawTextureData,
+    ) -> (wgpu::TextureFormat, u32, u32) {
+        use wgpu::TextureFormat as TF;
+        let channels = match self.format.channels {
+            TextureChannels::R => 1,
+            TextureChannels::RG => 2,
+            TextureChannels::RGB => 4,
+            TextureChannels::RGBA => 4,
+        };
+
+        match rgba {
+            RawTextureData::U8(_) => {
+                let format = match channels {
+                    1 => TF::R8Unorm,
+                    2 => TF::Rg8Unorm,
+                    _ => {
+                        if self.format.is_srgb {
+                            TF::Rgba8UnormSrgb
+                        } else {
+                            TF::Rgba8Unorm
+                        }
+                    }
+                };
+                (format, channels, 1)
+            }
+            RawTextureData::F32(_) => {
+                let format = match channels {
+                    1 => TF::R32Float,
+                    2 => TF::Rg32Float,
+                    _ => TF::Rgba32Float,
+                };
+                (format, channels, 4)
+            }
+        }
+    }
+
+    fn resolve_image_data(&self, source: TextureSource) -> (u32, u32, RawTextureData) {
+        match source {
+            TextureSource::Bytes(bytes) => {
+                let img = image::load_from_memory(bytes).expect("Failed to load image from memory");
+                self.resolve_dynamic_image_data(img)
+            }
+            TextureSource::Image(img) => self.resolve_dynamic_image_data(img),
+            TextureSource::Raw {
+                pixels,
+                width,
+                height,
+            } => self.resolve_raw_texture_data(pixels, width, height),
+            TextureSource::Empty => self.resolve_empty_texture_data(),
+        }
+    }
+
+    fn resolve_dynamic_image_data(&self, img: image::DynamicImage) -> (u32, u32, RawTextureData) {
+        let color_type = if self.format.precision == ComponentPrecision::Auto {
+            Some(dbg!(img.color()))
+        } else {
+            match self.format.precision {
+                ComponentPrecision::F32 => Some(image::ColorType::Rgba32F),
+                ComponentPrecision::U8 => Some(image::ColorType::Rgba8),
+                _ => panic!("Unsupported precision: {:?}", self.format.precision),
+            }
+        };
+
+        match color_type.unwrap() {
+            image::ColorType::Rgba32F | image::ColorType::Rgb32F => {
+                let rgba = img.to_rgba32f();
+                let (w, h) = rgba.dimensions();
+                (w, h, RawTextureData::F32(rgba.into_raw()))
+            }
+            image::ColorType::Rgba8 | image::ColorType::Rgb8 => {
+                let rgba = img.to_rgba8();
+                let (w, h) = rgba.dimensions();
+                (w, h, RawTextureData::U8(rgba.into_raw()))
+            }
+            _ => panic!("Unsupported color type: {:?}", color_type),
+        }
+    }
+
+    fn resolve_raw_texture_data(
+        &self,
+        pixels: &[u8],
+        width: u32,
+        height: u32,
+    ) -> (u32, u32, RawTextureData) {
+        if self.format.precision == ComponentPrecision::Auto
+            || self.format.precision == ComponentPrecision::U8
+        {
+            match self.format.channels {
+                TextureChannels::RGB => {
+                    let mut rgba = Vec::with_capacity(pixels.len() / 3 * 4);
+                    for rgb in pixels.chunks_exact(3) {
+                        rgba.extend_from_slice(rgb);
+                        rgba.push(255);
+                    }
+                    (width, height, RawTextureData::U8(rgba))
+                }
+                TextureChannels::R => (width, height, RawTextureData::U8(pixels.to_vec())),
+                TextureChannels::RG => (width, height, RawTextureData::U8(pixels.to_vec())),
+                TextureChannels::RGBA => (width, height, RawTextureData::U8(pixels.to_vec())),
+            }
+        } else {
+            panic!(
+                "Unsupported precision for raw data: {:?}",
+                self.format.precision
+            );
+        }
+    }
+
+    fn resolve_empty_texture_data(&self) -> (u32, u32, RawTextureData) {
+        let (width, height) = self
+            .size
+            .expect("Size must be provided for empty texture if no bytes/image are provided");
+
+        let channels = match self.format.channels {
+            TextureChannels::RGB => 4,
+            TextureChannels::R => 1,
+            TextureChannels::RG => 2,
+            TextureChannels::RGBA => 4,
+        };
+
+        if self.format.precision == ComponentPrecision::Auto
+            || self.format.precision == ComponentPrecision::U8
+        {
+            (
+                width,
+                height,
+                RawTextureData::U8(vec![0; (width * height * channels) as usize]),
+            )
+        } else {
+            (
+                width,
+                height,
+                RawTextureData::F32(vec![0.0f32; (width * height * channels) as usize]),
+            )
         }
     }
 }

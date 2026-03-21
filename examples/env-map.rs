@@ -46,11 +46,16 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return textureSample(t_texture, s_texture, in.uv);
+    let hdr_color = textureSample(t_texture, s_texture, in.uv);
+
+    // Simplified Reinhard tone mapping
+    let tone_mapped_rgb = hdr_color.rgb / (hdr_color.rgb + vec3<f32>(1.0));
+    //return vec4<f32>(tone_mapped_rgb, hdr_color.a);
+    return vec4<f32>(hdr_color.rgb, 1.0);
 }
 "#;
 
-#[repr(C)] // Гарантирует порядок полей как в коде
+#[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
     position: [f32; 3],
@@ -169,7 +174,6 @@ pub fn run() {
         info.name, info.backend
     );
 
-    // 4. Логическое устройство и очередь команд
     let (device, queue) = pollster::block_on(adapter.request_device(
         &wgpu::DeviceDescriptor {
             label: Some("My Primary Device"),
@@ -202,8 +206,8 @@ pub fn run() {
         height: size.height,
         present_mode: surface_caps.present_modes[0],
         alpha_mode: surface_caps.alpha_modes[0],
-        view_formats: vec![], // по умолчанию такой же как у surface_format. В основном sRGB с гаммой 2.2, если нужно самому конвертировать в линейный формат, то нужно указать другой формат
-        desired_maximum_frame_latency: 2, // двойная буферизация
+        view_formats: vec![],
+        desired_maximum_frame_latency: 2,
     };
 
     surface.configure(&device, &config);
@@ -216,17 +220,18 @@ pub fn run() {
 
     let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Vertex Buffer"),
-        contents: bytemuck::cast_slice(VERTICES), // bytemuck::cast_slice преобразует данные &[u8] WGPU принимает только &[u8]
+        contents: bytemuck::cast_slice(VERTICES),
         usage: wgpu::BufferUsages::VERTEX,
     });
 
     let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("Index Buffer"),
         contents: bytemuck::cast_slice(INDICES),
-        usage: wgpu::BufferUsages::INDEX, // Ключевой флаг
+        usage: wgpu::BufferUsages::INDEX,
     });
 
-    let mut file = File::open("assets/modern_buildings_night_1k.exr").expect("Файл не найден!");
+    //let mut file = File::open("assets/modern_buildings_night_1k.exr").expect("Файл не найден!");
+    let mut file = File::open("assets/flame.jpg").expect("Файл не найден!");
     let mut diffuse_bytes = Vec::<u8>::new();
     file.read_to_end(&mut diffuse_bytes).unwrap();
 
@@ -242,19 +247,19 @@ pub fn run() {
                     ty: wgpu::BindingType::Texture {
                         multisampled: false,
                         view_dimension: wgpu::TextureViewDimension::D2,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
                     },
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
                     visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
                     count: None,
                 },
                 wgpu::BindGroupLayoutEntry {
-                    binding: 2,                             // 0 - текстура, 1 - семплер, 2 - анимация
-                    visibility: wgpu::ShaderStages::VERTEX, // Смещать UV будем в вертексном шейдере
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::VERTEX,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -299,37 +304,34 @@ pub fn run() {
 
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: None,
-        bind_group_layouts: &[&texture_bind_group_layout], // Сюда потом пойдут Uniform-буферы (время, матрицы)
-        push_constant_ranges: &[],                         // Сюда потом пойдут push-константы
+        bind_group_layouts: &[&texture_bind_group_layout],
+        push_constant_ranges: &[],
     });
 
     let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("Render Pipeline"),
         layout: Some(&pipeline_layout),
         vertex: wgpu::VertexState {
-            module: &shader,        // Твой скомпилированный шейдер
-            entry_point: "vs_main", // Имя функции в шейдере
-            //buffers: &[Vertex::desc()], // Мы хардкодим вершины, так что тут пусто
+            module: &shader,
+            entry_point: "vs_main",
             buffers: &[VERTEX_LAYOUT],
             compilation_options: Default::default(),
         },
-        // Fragment стадия опциональна (но не для нас)
         fragment: Some(wgpu::FragmentState {
             module: &shader,
             entry_point: "fs_main",
             targets: &[Some(wgpu::ColorTargetState {
-                format: config.format,                  // Тот самый формат из surface (sRGB)
-                blend: Some(wgpu::BlendState::REPLACE), // Просто заменяем пиксели
+                format: config.format,
+                blend: Some(wgpu::BlendState::REPLACE),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
             compilation_options: Default::default(),
         }),
-        // Как интерпретировать вершины
         primitive: wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList, // Рисуем треугольники
+            topology: wgpu::PrimitiveTopology::TriangleList,
             ..Default::default()
         },
-        depth_stencil: None, // Глубина пока не нужна (мы в 2D)
+        depth_stencil: None,
         multisample: wgpu::MultisampleState::default(),
         multiview: None,
     });
@@ -350,11 +352,8 @@ pub fn run() {
                 event: WindowEvent::RedrawRequested,
                 window_id,
             } if window_id == window.id() => {
-                // Берем аналог defaulf framebuffer
                 let output = match surface.get_current_texture() {
                     Ok(output) => output,
-                    // Ошибка Lost: Surface "устарел" (например, окно перетащили или изменили размер).
-                    // Решение: Перенастроить его заново (re-configure) и попробовать в следующем кадре.
                     Err(wgpu::SurfaceError::Lost) => {
                         surface.configure(&device, &config);
                         return;
@@ -389,8 +388,6 @@ pub fn run() {
                         frame_count += 1;
                         frame_count %= 8 * 8;
                     }
-
-                    println!("Duration: {:.4}s", frame_time);
 
                     match &mut sprite_material {
                         Material::Sprite(s) => s.set_frame(frame_count, &queue),
