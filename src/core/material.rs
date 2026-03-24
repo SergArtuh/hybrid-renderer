@@ -54,8 +54,7 @@ pub struct SpriteMaterial {
 impl MaterialTrait for SpriteMaterial {
     const TYPE: MaterialType = MaterialType::Sprite;
     fn get_layout() -> &'static [wgpu::VertexBufferLayout<'static>] {
-        const LAYOUT: &[wgpu::VertexBufferLayout<'static>] = &[Vertex::LAYOUT];
-        LAYOUT
+        &[]
     }
 }
 
