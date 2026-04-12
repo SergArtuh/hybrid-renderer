@@ -162,4 +162,13 @@ impl MeshUtil {
             indices,
         }
     }
+
+    pub fn new_procedural_quad() -> MeshData {
+        MeshData {
+            vertices: vec![],
+            normals: vec![],
+            uvs: vec![],
+            indices: vec![],
+        }
+    }
 }

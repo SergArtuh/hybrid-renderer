@@ -1,11 +1,11 @@
-use crate::core::material::Material;
-use crate::core::material_builder::PhysicalMaterialBuilder;
+use crate::core::material::{Material, PhysicalMaterial};
 use crate::core::mesh::{Mesh, MeshData};
 use crate::core::model_node::ModelNode;
 use crate::core::render_context::RenderContext;
 use crate::core::texture::Texture;
 use crate::core::texture_builder::{ComponentPrecision, TextureBuilder, TextureChannels};
-use crate::renderer::layout_interface::LayoutInterface;
+use crate::renderer::materials::MaterialFactory;
+use crate::renderer::materials::pbr_material::PhysicalMaterialDescriptor;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -15,14 +15,20 @@ pub struct GltfAsset {
     pub scene_roots: Vec<Arc<ModelNode>>,
 }
 
-pub struct AssetLoader<'a> {
-    pub ctx: &'a RenderContext<'a>,
-    pub interface: Arc<LayoutInterface>,
+pub struct AssetLoader<'ctx, 'fac> {
+    pub ctx: &'ctx RenderContext<'ctx>,
+    pub material_factory: &'fac MaterialFactory<'ctx>,
 }
 
-impl<'a> AssetLoader<'a> {
-    pub fn new(ctx: &'a RenderContext, interface: Arc<LayoutInterface>) -> Self {
-        Self { ctx, interface }
+impl<'ctx, 'fac> AssetLoader<'ctx, 'fac> {
+    pub fn new(
+        ctx: &'ctx RenderContext<'ctx>,
+        material_factory: &'fac MaterialFactory<'ctx>,
+    ) -> Self {
+        Self {
+            ctx,
+            material_factory,
+        }
     }
 
     pub fn load_gltf_models(&self, path: impl AsRef<Path>) -> anyhow::Result<GltfAsset> {
@@ -50,12 +56,6 @@ impl<'a> AssetLoader<'a> {
 
         println!("Loaded gltf asset: {}", asset_name);
         Ok(gltf_asset)
-    }
-
-    pub fn create_default_material(&self) -> Material {
-        Material::Physical(
-            PhysicalMaterialBuilder::new().build(&self.ctx, &self.interface.material),
-        )
     }
 
     fn load_node(
@@ -92,45 +92,42 @@ impl<'a> AssetLoader<'a> {
             let gltf_material = primitive.material();
             let pbr = gltf_material.pbr_metallic_roughness();
 
-            let mut physical_material_builder = PhysicalMaterialBuilder::new();
+            let mut desc = PhysicalMaterialDescriptor {
+                base_color: None,
+                normal: None,
+                metallic_roughness: None,
+                occlusion: None,
+                emissive: None,
+            };
+
             if let Some(texture_info) = pbr.base_color_texture() {
                 let texture_index = texture_info.texture().source().index();
-                let texture = Arc::clone(&textures[texture_index]);
-
-                physical_material_builder = physical_material_builder.with_base_color(texture);
+                desc.base_color = Some(Arc::clone(&textures[texture_index]));
             }
 
             if let Some(texture_info) = pbr.metallic_roughness_texture() {
                 let texture_index = texture_info.texture().source().index();
-                let texture = Arc::clone(&textures[texture_index]);
-
-                physical_material_builder =
-                    physical_material_builder.with_metallic_roughness(texture);
+                desc.metallic_roughness = Some(Arc::clone(&textures[texture_index]));
             }
 
             if let Some(texture_info) = gltf_material.normal_texture() {
                 let texture_index = texture_info.texture().source().index();
-                let texture = Arc::clone(&textures[texture_index]);
-
-                physical_material_builder = physical_material_builder.with_normal(texture);
+                desc.normal = Some(Arc::clone(&textures[texture_index]));
             }
 
             if let Some(texture_info) = gltf_material.occlusion_texture() {
                 let texture_index = texture_info.texture().source().index();
-                let texture = Arc::clone(&textures[texture_index]);
-
-                physical_material_builder = physical_material_builder.with_occlusion(texture);
+                desc.occlusion = Some(Arc::clone(&textures[texture_index]));
             }
 
             if let Some(texture_info) = gltf_material.emissive_texture() {
                 let texture_index = texture_info.texture().source().index();
-                let texture = Arc::clone(&textures[texture_index]);
-
-                physical_material_builder = physical_material_builder.with_emissive(texture);
+                desc.emissive = Some(Arc::clone(&textures[texture_index]));
             }
 
             let material = Arc::new(Material::Physical(
-                physical_material_builder.build(&self.ctx, &self.interface.material),
+                self.material_factory
+                    .create_material::<PhysicalMaterial>(desc),
             ));
             (Some(mesh), Some(material))
         } else {

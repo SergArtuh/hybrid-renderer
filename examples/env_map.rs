@@ -5,7 +5,12 @@ use std::time::Instant;
 use wgpu::util::DeviceExt;
 use winit::{event::*, event_loop::EventLoop, window::WindowBuilder};
 
-use hybrid_renderer::core::material::{Material, SpriteMaterial};
+use hybrid_renderer::core::{
+    material::{Material, SpriteMaterial},
+    material_builder::SpriteMaterialBuilder,
+    render_context::RenderContext,
+    texture_builder::TextureBuilder,
+};
 
 const SHADER_SOURCE: &str = r#"
 struct VertexInput {
@@ -230,117 +235,123 @@ pub fn run() {
         usage: wgpu::BufferUsages::INDEX,
     });
 
+    let render_context = RenderContext::new(device, queue, surface, config);
+
     //let mut file = File::open("assets/modern_buildings_night_1k.exr").expect("Файл не найден!");
     let mut file = File::open("assets/flame.jpg").expect("Файл не найден!");
     let mut diffuse_bytes = Vec::<u8>::new();
     file.read_to_end(&mut diffuse_bytes).unwrap();
 
-    let mut sprite_material =
-        Material::Sprite(SpriteMaterial::new(&diffuse_bytes, 8, 8, &device, &queue));
+    let sprite_texture = Arc::new(
+        TextureBuilder::new(&render_context.device, &render_context.queue)
+            .from_bytes(&diffuse_bytes)
+            .with_filter(wgpu::FilterMode::Nearest, wgpu::FilterMode::Nearest)
+            .build(),
+    );
 
     let texture_bind_group_layout =
-        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+        render_context
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                        count: None,
                     },
-                    count: None,
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+                label: Some("texture_bind_group_layout"),
+            });
+
+    let sprite_material = SpriteMaterialBuilder::new()
+        .with_texture(Arc::clone(&sprite_texture))
+        .with_grid_size(1, 1)
+        .build(&render_context, &texture_bind_group_layout);
+    //let sprite_material = SpriteMaterial::new(sprite_texture.view, 1, 1, &device);
+
+    // let texture_bind_group = render_context
+    //     .device
+    //     .create_bind_group(&wgpu::BindGroupDescriptor {
+    //         layout: &texture_bind_group_layout,
+    //         entries: &[
+    //             wgpu::BindGroupEntry {
+    //                 binding: 0,
+    //                 resource: wgpu::BindingResource::TextureView(&sprite_material.texture),
+    //             },
+    //             wgpu::BindGroupEntry {
+    //                 binding: 1,
+    //                 resource: wgpu::BindingResource::Sampler(&sprite_texture.sampler),
+    //             },
+    //             wgpu::BindGroupEntry {
+    //                 binding: 2,
+    //                 resource: wgpu::BindingResource::Buffer(
+    //                     sprite_material.uniform_buffer.as_entire_buffer_binding(),
+    //                 ),
+    //             },
+    //         ],
+    //         label: Some("texture_bind_group"),
+    //     });
+
+    let pipeline_layout =
+        render_context
+            .device
+            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
+                bind_group_layouts: &[&texture_bind_group_layout],
+                push_constant_ranges: &[],
+            });
+
+    let render_pipeline =
+        render_context
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("Render Pipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: "vs_main",
+                    buffers: &[VERTEX_LAYOUT],
+                    compilation_options: Default::default(),
                 },
-            ],
-            label: Some("texture_bind_group_layout"),
-        });
-
-    let sprite_texture = match sprite_material {
-        Material::Sprite(ref s) => &s.texture,
-        _ => panic!("Not a sprite material"),
-    };
-
-    let sprite_uniform_buffer = match sprite_material {
-        Material::Sprite(ref s) => &s.uniform_buffer,
-        _ => panic!("Not a sprite material"),
-    };
-
-    let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &texture_bind_group_layout,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&sprite_texture.view),
-            },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::Sampler(&sprite_texture.sampler),
-            },
-            wgpu::BindGroupEntry {
-                binding: 2,
-                resource: wgpu::BindingResource::Buffer(
-                    sprite_uniform_buffer.as_entire_buffer_binding(),
-                ),
-            },
-        ],
-        label: Some("texture_bind_group"),
-    });
-
-    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: None,
-        bind_group_layouts: &[&texture_bind_group_layout],
-        push_constant_ranges: &[],
-    });
-
-    let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("Render Pipeline"),
-        layout: Some(&pipeline_layout),
-        vertex: wgpu::VertexState {
-            module: &shader,
-            entry_point: "vs_main",
-            buffers: &[VERTEX_LAYOUT],
-            compilation_options: Default::default(),
-        },
-        fragment: Some(wgpu::FragmentState {
-            module: &shader,
-            entry_point: "fs_main",
-            targets: &[Some(wgpu::ColorTargetState {
-                format: config.format,
-                blend: Some(wgpu::BlendState::REPLACE),
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-            compilation_options: Default::default(),
-        }),
-        primitive: wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            ..Default::default()
-        },
-        depth_stencil: None,
-        multisample: wgpu::MultisampleState::default(),
-        multiview: None,
-    });
-
-    let mut frame_time = 0.0;
-    let sprite_animation_fps = 25.0;
-    let sprite_animation_duration = 1.0 / sprite_animation_fps;
-    let mut frame_count = 0;
-    let mut last_time = Instant::now();
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: "fs_main",
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: render_context.config.format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: Default::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+            });
 
     event_loop
         .run(move |event, elwt| match event {
@@ -352,10 +363,12 @@ pub fn run() {
                 event: WindowEvent::RedrawRequested,
                 window_id,
             } if window_id == window.id() => {
-                let output = match surface.get_current_texture() {
+                let output = match render_context.surface.get_current_texture() {
                     Ok(output) => output,
                     Err(wgpu::SurfaceError::Lost) => {
-                        surface.configure(&device, &config);
+                        render_context
+                            .surface
+                            .configure(&render_context.device, &render_context.config);
                         return;
                     }
                     Err(wgpu::SurfaceError::OutOfMemory) => {
@@ -372,38 +385,26 @@ pub fn run() {
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
-                let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Render Encoder"),
-                });
+                let mut encoder =
+                    render_context
+                        .device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("Render Encoder"),
+                        });
 
                 {
-                    let now = Instant::now();
-                    let delta_time = now.duration_since(last_time);
-                    last_time = now;
-
-                    frame_time += delta_time.as_secs_f32();
-
-                    if frame_time >= sprite_animation_duration {
-                        frame_time = 0.0;
-                        frame_count += 1;
-                        frame_count %= 8 * 8;
-                    }
-
-                    match &mut sprite_material {
-                        Material::Sprite(s) => s.set_frame(frame_count, &queue),
-                        Material::Physical(_) => panic!("Not a sprite material"),
-                    };
-
                     let mut render_pass = create_render_pass(&mut encoder, &view);
-                    render_pass.set_pipeline(&render_pipeline); // Устанавливаем наш "чертеж"
+                    render_pass.set_pipeline(&render_pipeline);
 
                     render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
                     render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-                    render_pass.set_bind_group(0, &texture_bind_group, &[]);
+                    render_pass.set_bind_group(0, &sprite_material.bind_group, &[]);
                     render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..1);
                 }
 
-                queue.submit(std::iter::once(encoder.finish()));
+                render_context
+                    .queue
+                    .submit(std::iter::once(encoder.finish()));
 
                 output.present();
             }

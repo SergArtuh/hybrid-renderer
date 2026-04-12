@@ -1,3 +1,4 @@
+use hybrid_renderer::assets::asset_loader::AssetLoader;
 use hybrid_renderer::assets::model::Model;
 use std::sync::Arc;
 use std::time::Instant;
@@ -92,12 +93,11 @@ pub fn run() {
     let render_context = RenderContext::new(device, queue, surface, config);
     let mut renderer = Renderer::new(&render_context);
 
-    //let models = load_gltf_models("assets/models/duck.glb", &device).unwrap();
-    let models = renderer
-        .create_asset_loader(&render_context)
+    let material_factory = renderer.get_material_factory(&render_context);
+    let asset_loader = AssetLoader::new(&render_context, &material_factory);
+    let models = asset_loader
         .load_gltf_models("assets/models/porsche.glb")
         .unwrap();
-    //let models = load_gltf_models("assets/models/lantern.glb", &device).unwrap();
 
     for model_node in &models.scene_roots {
         let model = Model::new(Arc::clone(model_node), glam::Mat4::IDENTITY);

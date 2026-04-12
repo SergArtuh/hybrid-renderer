@@ -1,10 +1,14 @@
-use crate::core::render_context::RenderContext;
+use std::{collections::HashMap, sync::Arc};
+
+use crate::core::{material::MaterialType, render_context::RenderContext};
 
 pub struct LayoutInterface {
     pub global: wgpu::BindGroupLayout,
     pub model: wgpu::BindGroupLayout,
-    pub material: wgpu::BindGroupLayout,
-    pub pipeline_layout: wgpu::PipelineLayout,
+    //pub material: wgpu::BindGroupLayout,
+    pub materials: HashMap<MaterialType, Arc<wgpu::BindGroupLayout>>,
+    // pub pipeline_layout: wgpu::PipelineLayout,
+    pub pipeline_layouts: HashMap<MaterialType, wgpu::PipelineLayout>,
 }
 
 impl LayoutInterface {
@@ -37,12 +41,15 @@ impl LayoutInterface {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: true,
                             min_binding_size: wgpu::BufferSize::new(64),
+                            // has_dynamic_offset: false,
+                            // min_binding_size: None,
                         },
                         count: None,
                     }],
                     label: Some("model_layout"),
                 });
 
+        /*
         let material =
             render_context
                 .device
@@ -122,12 +129,15 @@ impl LayoutInterface {
                     bind_group_layouts: &[&global, &model, &material],
                     push_constant_ranges: &[],
                 });
+                */
 
         Self {
             global,
             model,
-            material,
-            pipeline_layout,
+            //material,
+            materials: HashMap::new(),
+            //pipeline_layout,
+            pipeline_layouts: HashMap::new(),
         }
     }
 }

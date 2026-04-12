@@ -31,20 +31,33 @@ impl ForwardPass {
                     mesh,
                     material,
                     world_matrix: _,
-                } => {
-                    let pipeline = pipeline_manager.get_pipeline(&material);
+                } => match (&mesh.vertex_buffer, &mesh.index_buffer) {
+                    (Some(vertex_buffer), Some(index_buffer)) => {
+                        let pipeline = pipeline_manager.get_pipeline(&material);
 
-                    let offset = (i as DynamicOffset) * stride;
+                        let offset = (i as DynamicOffset) * stride;
 
-                    rpass.set_pipeline(&pipeline);
-                    rpass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-                    rpass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                    rpass.set_bind_group(0, &camera_manager.bind_group, &[]);
-                    rpass.set_bind_group(1, &model_manager.bind_group, &[offset]);
-                    rpass.set_bind_group(2, &material.bind_group(), &[]);
+                        rpass.set_pipeline(&pipeline);
+                        rpass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                        rpass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                        rpass.set_bind_group(0, &camera_manager.bind_group, &[]);
+                        rpass.set_bind_group(1, &model_manager.bind_group, &[offset]);
+                        rpass.set_bind_group(2, &material.bind_group(), &[]);
 
-                    rpass.draw_indexed(0..mesh.index_count, 0, 0..1);
-                }
+                        rpass.draw_indexed(0..mesh.index_count, 0, 0..1);
+                    }
+                    (None, None) => {
+                        let pipeline = pipeline_manager.get_pipeline(&material);
+                        rpass.set_pipeline(&pipeline);
+                        rpass.set_bind_group(0, &camera_manager.bind_group, &[]);
+                        //rpass.set_bind_group(1, &model_manager.bind_group, &[]);
+                        rpass.set_bind_group(1, &model_manager.bind_group, &[0u32]);
+                        rpass.set_bind_group(2, &material.bind_group(), &[]);
+
+                        rpass.draw(0..mesh.index_count, 0..1);
+                    }
+                    _ => {}
+                },
             }
         }
     }

@@ -1,11 +1,13 @@
-use std::sync::Arc;
+use std::{cell::RefCell, sync::Arc};
 
 use crate::{
-    assets::asset_loader::AssetLoader,
-    core::{material::PhysicalMaterial, render_context::RenderContext},
+    core::{
+        material::{PhysicalMaterial, SpriteMaterial},
+        render_context::RenderContext,
+    },
     renderer::{
         camera_manager::CameraManager, frame_target::FrameTarget,
-        layout_interface::LayoutInterface, model_manager::ModelManager,
+        layout_interface::LayoutInterface, materials::MaterialFactory, model_manager::ModelManager,
         pipeline_manager::PipelineManager,
     },
     stage::frame_data::FrameData,
@@ -14,10 +16,12 @@ use crate::{
 pub mod camera_manager;
 pub mod frame_target;
 pub mod layout_interface;
+pub mod materials;
 pub mod model_manager;
 pub mod passes;
 pub mod pipeline_manager;
 
+use materials::{PbrMaterialDefinition, SpriteMaterialDefinition};
 use passes::forward::ForwardPass;
 
 pub struct Renderer {
@@ -25,22 +29,33 @@ pub struct Renderer {
     camera_manager: CameraManager,
     model_manager: ModelManager,
     pipeline_manager: PipelineManager,
-    layout_interface: Arc<LayoutInterface>,
+    pub layout_interface: Arc<RefCell<LayoutInterface>>,
     depth_texture_view: wgpu::TextureView,
 }
 
 impl Renderer {
     pub fn new(render_context: &RenderContext) -> Self {
-        let layout_interface = Arc::new(LayoutInterface::new(render_context));
-        let camera_manager = CameraManager::new(render_context, &layout_interface.global);
-        let model_manager = ModelManager::new(render_context, &layout_interface.model);
+        render_context
+            .device
+            .push_error_scope(wgpu::ErrorFilter::Validation);
+
+        let layout_interface = Arc::new(RefCell::new(LayoutInterface::new(render_context)));
+        let camera_manager = CameraManager::new(render_context, &layout_interface.borrow().global);
+        let model_manager = ModelManager::new(render_context, &layout_interface.borrow().model);
         let depth_texture_view = Self::create_depth_texture(render_context);
 
         let mut pipeline_manager = PipelineManager::new();
         pipeline_manager.register_pipeline::<PhysicalMaterial>(
             render_context,
-            &layout_interface,
+            Arc::clone(&layout_interface),
             "pbr_material.wgsl",
+            PbrMaterialDefinition::create_pipeline,
+        );
+        pipeline_manager.register_pipeline::<SpriteMaterial>(
+            render_context,
+            Arc::clone(&layout_interface),
+            "sprite_material.wgsl",
+            SpriteMaterialDefinition::create_pipeline,
         );
 
         let forward_pass = ForwardPass::default();
@@ -57,7 +72,8 @@ impl Renderer {
 
     pub fn render(&mut self, render_context: &RenderContext, frame_data: &FrameData) {
         self.pipeline_manager
-            .check_shader_updates(render_context, &self.layout_interface);
+            .check_shader_updates(render_context, Arc::clone(&self.layout_interface));
+
         let mut frame_target = self.begin_frame(render_context);
 
         self.camera_manager
@@ -82,8 +98,11 @@ impl Renderer {
         self.end_frame(render_context, frame_target);
     }
 
-    pub fn create_asset_loader<'a>(&'a self, render_context: &'a RenderContext) -> AssetLoader<'a> {
-        AssetLoader::new(render_context, Arc::clone(&self.layout_interface))
+    pub fn get_material_factory<'a>(
+        &'a self,
+        render_context: &'a RenderContext,
+    ) -> MaterialFactory<'a> {
+        MaterialFactory::new(render_context, Arc::clone(&self.layout_interface))
     }
 
     fn begin_frame(&self, render_context: &RenderContext) -> FrameTarget {
@@ -117,6 +136,7 @@ impl Renderer {
         render_context
             .queue
             .submit(std::iter::once(target.encoder.finish()));
+        //render_context.device.poll(wgpu::Maintain::Wait);
         target.surface_texture.present();
     }
 

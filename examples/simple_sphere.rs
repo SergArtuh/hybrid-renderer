@@ -94,12 +94,11 @@ pub fn run() {
         .with_fov(45.0)
         .with_aspect(size.width as f32 / size.height as f32);
 
-    //let sphere = Mesh::new_sphere(1.0, 32, 32);
     let mesh_data = MeshUtil::new_cube(0.8);
     let mesh = Mesh::from_data(&render_context.device, &mesh_data);
 
     let material = renderer
-        .create_asset_loader(&render_context)
+        .get_material_factory(&render_context)
         .create_default_material();
     let model_node = ModelNode::new(mesh, material);
     let model = Model::new(Arc::new(model_node), glam::Mat4::IDENTITY);

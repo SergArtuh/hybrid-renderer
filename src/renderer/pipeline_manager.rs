@@ -1,6 +1,8 @@
 use std::{
+    cell::RefCell,
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -11,18 +13,16 @@ use crate::{
         material::{Material, MaterialTrait, MaterialType},
         render_context::RenderContext,
     },
-    renderer::layout_interface::LayoutInterface,
+    renderer::{layout_interface::LayoutInterface, materials::PipelineVisitorEnvironment},
 };
-
-use anyhow::Context;
 
 type LayoutFetcher = fn() -> &'static [wgpu::VertexBufferLayout<'static>];
 
 #[derive(Clone, Debug)]
-struct PipelineDefinition {
-    shader_path: PathBuf,
-    layout_fetcher: LayoutFetcher,
-    material_type: MaterialType,
+pub(crate) struct PipelineDefinition {
+    pub shader_path: PathBuf,
+    pub layout_fetcher: LayoutFetcher,
+    pub material_type: MaterialType,
 }
 
 struct ShaderWatcher {
@@ -93,12 +93,22 @@ impl ShaderWatcher {
     }
 }
 
+pub type PipelineBuilderFn = fn(&PipelineVisitorEnvironment) -> Result<wgpu::RenderPipeline, anyhow::Error>;
+
+type ReloadFn = Box<
+    dyn Fn(
+        &PipelineManager,
+        &PipelineVisitorEnvironment,
+    ) -> Result<wgpu::RenderPipeline, anyhow::Error>,
+>;
+
 pub struct PipelineManager {
-    modules: HashMap<String, wgpu::ShaderModule>,
     pipelines: HashMap<MaterialType, wgpu::RenderPipeline>,
     base_shaders_path: PathBuf,
     #[cfg(feature = "shader-hot-reload")]
     shader_watcher: Option<ShaderWatcher>,
+    #[cfg(feature = "shader-hot-reload")]
+    reloaders: HashMap<MaterialType, ReloadFn>,
 }
 
 impl PipelineManager {
@@ -107,6 +117,7 @@ impl PipelineManager {
         let base_shaders_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src")
             .join("renderer")
+            .join("materials")
             .join("shaders");
 
         #[cfg(feature = "shader-hot-reload")]
@@ -118,19 +129,21 @@ impl PipelineManager {
         };
 
         Self {
-            modules: HashMap::new(),
             pipelines: HashMap::new(),
             base_shaders_path,
             #[cfg(feature = "shader-hot-reload")]
             shader_watcher,
+            #[cfg(feature = "shader-hot-reload")]
+            reloaders: HashMap::new(),
         }
     }
 
     pub fn register_pipeline<T: MaterialTrait>(
         &mut self,
         context: &RenderContext,
-        interface: &LayoutInterface,
+        interface: Arc<RefCell<LayoutInterface>>,
         shader_path: &str,
+        pipeline_builder: PipelineBuilderFn,
     ) {
         let material_type = T::TYPE;
         let full_shader_path = self.base_shaders_path.clone().join(shader_path);
@@ -143,99 +156,28 @@ impl PipelineManager {
             material_type,
         };
 
-        let render_pipeline = self.build_pipeline(&pipeline_definition, context, interface);
+        let pipeline_visitor_env = PipelineVisitorEnvironment {
+            pipeline_definition: &pipeline_definition,
+            context,
+            layout: interface,
+        };
+
+        let render_pipeline = pipeline_builder(&pipeline_visitor_env);
 
         if let Ok(render_pipeline) = render_pipeline {
             self.pipelines.insert(material_type, render_pipeline);
+
+            #[cfg(feature = "shader-hot-reload")]
+            {
+                let reloader: ReloadFn = Box::new(move |_manager, env| pipeline_builder(env));
+                self.reloaders.insert(material_type, reloader);
+            }
         }
 
         #[cfg(feature = "shader-hot-reload")]
         if let Some(w) = &mut self.shader_watcher {
             w.add_pipeline(pipeline_definition);
         }
-    }
-
-    fn build_pipeline(
-        &mut self,
-        pipeline_definition: &PipelineDefinition,
-        context: &RenderContext,
-        interface: &LayoutInterface,
-    ) -> Result<wgpu::RenderPipeline, anyhow::Error> {
-        context
-            .device
-            .push_error_scope(wgpu::ErrorFilter::Validation);
-        let shader_path = &pipeline_definition.shader_path;
-        let source = std::fs::read_to_string(shader_path)
-            .with_context(|| format!("Failed to read shader file at {:?}", shader_path))?;
-
-        let label = shader_path
-            .to_str()
-            .context("Shader path contains invalid UTF-8 characters")?;
-
-        let shader_module = context
-            .device
-            .create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some(label),
-                source: wgpu::ShaderSource::Wgsl(source.into()),
-            });
-
-        let render_pipeline =
-            context
-                .device
-                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some("Render Pipeline"),
-                    layout: Some(&interface.pipeline_layout),
-                    vertex: wgpu::VertexState {
-                        module: &shader_module,
-                        entry_point: "vs_main",
-                        buffers: (pipeline_definition.layout_fetcher)(),
-                        compilation_options: Default::default(),
-                    },
-                    depth_stencil: Some(wgpu::DepthStencilState {
-                        format: Self::DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::Less,
-                        stencil: wgpu::StencilState::default(),
-                        bias: wgpu::DepthBiasState::default(),
-                    }),
-                    fragment: Some(wgpu::FragmentState {
-                        module: &shader_module,
-                        entry_point: "fs_main",
-                        targets: &[Some(wgpu::ColorTargetState {
-                            format: context.config.format,
-                            blend: Some(wgpu::BlendState::REPLACE),
-                            write_mask: wgpu::ColorWrites::ALL,
-                        })],
-                        compilation_options: Default::default(),
-                    }),
-                    primitive: wgpu::PrimitiveState {
-                        topology: wgpu::PrimitiveTopology::TriangleList,
-                        ..Default::default()
-                    },
-                    multisample: wgpu::MultisampleState::default(),
-                    multiview: None,
-                });
-
-        self.modules.insert(
-            pipeline_definition
-                .shader_path
-                .to_str()
-                .unwrap()
-                .to_string(),
-            shader_module,
-        );
-
-        let maybe_error = pollster::block_on(context.device.pop_error_scope());
-
-        if let Some(error) = maybe_error {
-            println!(
-                "Pipeline Validation Error: {:?}, {:?}",
-                pipeline_definition.shader_path, error
-            );
-            return Err(anyhow::anyhow!("Pipeline Validation Error: {:?}", error));
-        }
-
-        Ok(render_pipeline)
     }
 
     pub fn get_pipeline(&self, material: &Material) -> &wgpu::RenderPipeline {
@@ -245,7 +187,11 @@ impl PipelineManager {
     }
 
     #[allow(unused_variables)]
-    pub fn check_shader_updates(&mut self, context: &RenderContext, interface: &LayoutInterface) {
+    pub fn check_shader_updates(
+        &mut self,
+        context: &RenderContext,
+        interface: Arc<RefCell<LayoutInterface>>,
+    ) {
         #[cfg(feature = "shader-hot-reload")]
         {
             let modified_pipelines = if let Some(watcher) = &mut self.shader_watcher {
@@ -256,7 +202,18 @@ impl PipelineManager {
             };
 
             for pipeline_definition in modified_pipelines {
-                let pipeline = self.build_pipeline(&pipeline_definition, context, interface);
+                let pipeline_visitor_env = PipelineVisitorEnvironment {
+                    pipeline_definition: &pipeline_definition,
+                    context,
+                    layout: Arc::clone(&interface),
+                };
+
+                let reloader = self
+                    .reloaders
+                    .get(&pipeline_definition.material_type)
+                    .unwrap();
+
+                let pipeline = reloader(self, &pipeline_visitor_env);
 
                 if let Ok(pipeline) = pipeline {
                     self.pipelines
