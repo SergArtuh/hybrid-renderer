@@ -2,12 +2,15 @@ use std::{cell::RefCell, sync::Arc};
 
 use crate::{
     core::{
-        material::{PhysicalMaterial, SpriteMaterial},
+        material::{PhysicalMaterial, SkyboxEnvironmentMaterial, SpriteMaterial},
         render_context::RenderContext,
     },
     renderer::{
-        camera_manager::CameraManager, frame_target::FrameTarget,
-        layout_interface::LayoutInterface, materials::MaterialFactory, model_manager::ModelManager,
+        camera_manager::CameraManager,
+        frame_target::FrameTarget,
+        layout_interface::LayoutInterface,
+        materials::{MaterialFactory, skybox_material::SkyboxMaterialDefinition},
+        model_manager::ModelManager,
         pipeline_manager::PipelineManager,
     },
     stage::frame_data::FrameData,
@@ -56,6 +59,12 @@ impl Renderer {
             Arc::clone(&layout_interface),
             "sprite_material.wgsl",
             SpriteMaterialDefinition::create_pipeline,
+        );
+        pipeline_manager.register_pipeline::<SkyboxEnvironmentMaterial>(
+            render_context,
+            Arc::clone(&layout_interface),
+            "skybox.wgsl",
+            SkyboxMaterialDefinition::create_pipeline,
         );
 
         let forward_pass = ForwardPass::default();

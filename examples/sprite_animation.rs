@@ -1,6 +1,6 @@
 use glam::Vec3;
 use hybrid_renderer::{
-    assets::{camera::Camera, model::Model},
+    assets::{asset_loader::AssetLoader, camera::Camera, model::Model},
     core::{
         material::Material, mesh::Mesh, model_node::ModelNode, render_context::RenderContext,
         texture_builder::TextureBuilder,
@@ -120,6 +120,13 @@ pub fn run() {
     ));
     let model = Model::new(model_node.clone(), glam::Mat4::IDENTITY);
 
+    let material_factory = renderer.get_material_factory(&render_context);
+    let asset_loader = AssetLoader::new(&render_context, &material_factory);
+    //let skybox = asset_loader.load_skybox("assets/flame.jpg").unwrap();
+    let skybox = asset_loader
+        .load_skybox("assets/modern_buildings_night_1k.exr")
+        .unwrap();
+
     let camera = Camera::new(Vec3::new(0.0, 0.0, CAMERA_DISTANCE))
         .with_target(Vec3::new(0.0, 0.0, 0.0))
         .with_fov(45.0)
@@ -129,6 +136,7 @@ pub fn run() {
 
     let mut stage = Stage::new(camera);
     stage.add_model(model);
+    stage.set_skybox(skybox);
 
     let mut frame_time = 0.0;
     let sprite_animation_fps = 25.0;

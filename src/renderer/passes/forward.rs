@@ -50,7 +50,6 @@ impl ForwardPass {
                         let pipeline = pipeline_manager.get_pipeline(&material);
                         rpass.set_pipeline(&pipeline);
                         rpass.set_bind_group(0, &camera_manager.bind_group, &[]);
-                        //rpass.set_bind_group(1, &model_manager.bind_group, &[]);
                         rpass.set_bind_group(1, &model_manager.bind_group, &[0u32]);
                         rpass.set_bind_group(2, &material.bind_group(), &[]);
 
@@ -58,6 +57,26 @@ impl ForwardPass {
                     }
                     _ => {}
                 },
+            }
+        }
+
+        if let Some(skybox) = &frame_data.skybox {
+            let pipeline = pipeline_manager.get_pipeline(&skybox.material);
+            rpass.set_pipeline(&pipeline);
+            rpass.set_bind_group(0, &camera_manager.bind_group, &[]);
+            rpass.set_bind_group(1, &model_manager.bind_group, &[0u32]);
+            rpass.set_bind_group(2, &skybox.material.bind_group(), &[]);
+            
+            match (&skybox.mesh.vertex_buffer, &skybox.mesh.index_buffer) {
+                (Some(vertex_buffer), Some(index_buffer)) => {
+                    rpass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                    rpass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    rpass.draw_indexed(0..skybox.mesh.index_count, 0, 0..1);
+                }
+                (None, None) => {
+                    rpass.draw(0..skybox.mesh.index_count, 0..1);
+                }
+                _ => {}
             }
         }
     }

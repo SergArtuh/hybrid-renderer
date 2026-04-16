@@ -4,7 +4,7 @@ use anyhow::Context;
 
 use crate::{
     core::{
-        material::{MaterialTrait, MaterialType, PhysicalMaterial},
+        material::{MaterialDomain, MaterialTrait, MaterialType, PhysicalMaterial},
         render_context::RenderContext,
         texture::Texture,
         vertex::Vertex,
@@ -22,6 +22,7 @@ pub struct PhysicalMaterialDescriptor {
 
 impl MaterialTrait for PhysicalMaterial {
     type Descriptor = PhysicalMaterialDescriptor;
+    const DOMAIN: MaterialDomain = MaterialDomain::Surface;
     const TYPE: MaterialType = MaterialType::Physical;
     fn get_layout() -> &'static [wgpu::VertexBufferLayout<'static>] {
         const LAYOUT: &[wgpu::VertexBufferLayout<'static>] = &[Vertex::LAYOUT];

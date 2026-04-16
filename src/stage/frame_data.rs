@@ -1,3 +1,4 @@
+use crate::assets::skybox::Skybox;
 use crate::core::camera::CameraUniform;
 use crate::core::material::Material;
 use crate::core::mesh::Mesh;
@@ -22,4 +23,5 @@ impl RenderItem {
 pub struct FrameData {
     pub camera_uniform: CameraUniform,
     pub render_items: Vec<RenderItem>,
+    pub skybox: Option<Skybox>,
 }

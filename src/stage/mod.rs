@@ -3,14 +3,15 @@ pub mod frame_data;
 use std::sync::Arc;
 
 use crate::{
-    assets::{camera::Camera, model::Model},
+    assets::{camera::Camera, model::Model, skybox::Skybox},
     core::{camera::CameraUniform, model_node::ModelNode},
     stage::frame_data::{FrameData, RenderItem},
 };
 
 pub struct Stage {
     pub main_camera: Camera,
-    pub models: Vec<Model>,
+    models: Vec<Model>,
+    skybox: Option<Skybox>,
 }
 
 impl Stage {
@@ -18,11 +19,16 @@ impl Stage {
         Self {
             main_camera: camera,
             models: Vec::new(),
+            skybox: None,
         }
     }
 
     pub fn add_model(&mut self, model: Model) {
         self.models.push(model);
+    }
+
+    pub fn set_skybox(&mut self, skybox: Skybox) {
+        self.skybox = Some(skybox);
     }
 
     pub fn make_frame_data(&self) -> FrameData {
@@ -41,6 +47,7 @@ impl Stage {
                 view_proj: self.main_camera.calc_matrix(),
             },
             render_items,
+            skybox: self.skybox.clone(),
         }
     }
 

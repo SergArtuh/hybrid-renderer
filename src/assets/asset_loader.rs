@@ -1,11 +1,15 @@
-use crate::core::material::{Material, PhysicalMaterial};
+use crate::assets::skybox::Skybox;
+use crate::core::material::{Material, PhysicalMaterial, SkyboxEnvironmentMaterial};
 use crate::core::mesh::{Mesh, MeshData};
 use crate::core::model_node::ModelNode;
 use crate::core::render_context::RenderContext;
 use crate::core::texture::Texture;
 use crate::core::texture_builder::{ComponentPrecision, TextureBuilder, TextureChannels};
-use crate::renderer::materials::MaterialFactory;
 use crate::renderer::materials::pbr_material::PhysicalMaterialDescriptor;
+use crate::renderer::materials::{MaterialFactory, SkyboxMaterialDescriptor};
+use crate::util::geometry_generator::MeshUtil;
+use std::fs::File;
+use std::io::Read;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -56,6 +60,35 @@ impl<'ctx, 'fac> AssetLoader<'ctx, 'fac> {
 
         println!("Loaded gltf asset: {}", asset_name);
         Ok(gltf_asset)
+    }
+
+    pub fn load_skybox(&self, path: impl AsRef<Path>) -> anyhow::Result<Skybox> {
+        let mut file = File::open(path).expect("File not found!");
+        let mut diffuse_bytes = Vec::<u8>::new();
+        file.read_to_end(&mut diffuse_bytes).unwrap();
+
+        let sprite_texture = Arc::new(
+            TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
+                .from_bytes(&diffuse_bytes)
+                .with_filter(wgpu::FilterMode::Nearest, wgpu::FilterMode::Nearest)
+                .build(),
+        );
+
+        let mesh = Arc::new(Mesh::from_data(
+            &self.ctx.device,
+            &MeshUtil::new_procedural_quad(),
+        ));
+
+        let material = self
+            .material_factory
+            .create_material::<SkyboxEnvironmentMaterial>(SkyboxMaterialDescriptor {
+                texture: Arc::clone(&sprite_texture),
+            });
+
+        Ok(Skybox {
+            mesh,
+            material: Arc::new(Material::Skybox(material)),
+        })
     }
 
     fn load_node(

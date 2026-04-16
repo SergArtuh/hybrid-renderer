@@ -5,11 +5,19 @@ use std::{cell::Cell, sync::Arc};
 pub enum MaterialType {
     Sprite,
     Physical,
+    Skybox,
+}
+
+pub enum MaterialDomain {
+    Surface,
+    PostProcess,
+    Environment,
 }
 
 pub enum Material {
     Sprite(SpriteMaterial),
     Physical(PhysicalMaterial),
+    Skybox(SkyboxEnvironmentMaterial),
 }
 
 impl Material {
@@ -17,12 +25,14 @@ impl Material {
         match self {
             Material::Sprite(_) => MaterialType::Sprite,
             Material::Physical(_) => MaterialType::Physical,
+            Material::Skybox(_) => MaterialType::Skybox,
         }
     }
     pub fn bind_group(&self) -> &wgpu::BindGroup {
         match self {
             Material::Sprite(sprite_material) => &sprite_material.bind_group,
             Material::Physical(physical_material) => &physical_material.bind_group,
+            Material::Skybox(skybox_material) => &skybox_material.bind_group,
         }
     }
 }
@@ -30,6 +40,7 @@ impl Material {
 pub trait MaterialTrait: Sized {
     type Descriptor;
     const TYPE: MaterialType;
+    const DOMAIN: MaterialDomain;
     fn get_layout() -> &'static [wgpu::VertexBufferLayout<'static>];
     // Метод создания "живого" материала из описания
     fn create(
@@ -73,5 +84,10 @@ pub struct PhysicalMaterial {
     pub metallic_roughness: Arc<wgpu::TextureView>,
     pub occlusion: Arc<wgpu::TextureView>,
     pub emissive: Arc<wgpu::TextureView>,
+    pub bind_group: wgpu::BindGroup,
+}
+
+pub struct SkyboxEnvironmentMaterial {
+    pub texture: Arc<wgpu::TextureView>,
     pub bind_group: wgpu::BindGroup,
 }

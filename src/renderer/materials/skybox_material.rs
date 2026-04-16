@@ -1,13 +1,10 @@
-use std::{cell::Cell, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::Context;
-use wgpu::util::DeviceExt;
 
 use crate::{
     core::{
-        material::{
-            MaterialDomain, MaterialTrait, MaterialType, SpriteMaterial, SpriteSheetUniform,
-        },
+        material::{MaterialDomain, MaterialTrait, MaterialType, SkyboxEnvironmentMaterial},
         render_context::RenderContext,
         texture::Texture,
         vertex::Vertex,
@@ -15,22 +12,21 @@ use crate::{
     renderer::materials::{DEFAULT_DEPTH_FORMAT, PipelineVisitorEnvironment},
 };
 
-pub struct SpriteMaterialDescriptor {
+pub struct SkyboxMaterialDescriptor {
     pub texture: Arc<Texture>,
-    pub grid_size: (u32, u32),
 }
 
-impl MaterialTrait for SpriteMaterial {
-    type Descriptor = SpriteMaterialDescriptor;
-    const DOMAIN: MaterialDomain = MaterialDomain::Surface;
-    const TYPE: MaterialType = MaterialType::Sprite;
+impl MaterialTrait for SkyboxEnvironmentMaterial {
+    type Descriptor = SkyboxMaterialDescriptor;
+    const DOMAIN: MaterialDomain = MaterialDomain::Environment;
+    const TYPE: MaterialType = MaterialType::Skybox;
     fn create(
         context: &RenderContext,
         desc: Self::Descriptor,
         //TODO: get layout from MaterialTrait
         layout: &wgpu::BindGroupLayout,
     ) -> Result<Self, anyhow::Error> {
-        let material_definition = SpriteMaterialDefinition::default();
+        let material_definition = SkyboxMaterialDefinition::default();
         let material = material_definition.create_instance(context, desc, layout);
         Ok(material)
     }
@@ -41,29 +37,16 @@ impl MaterialTrait for SpriteMaterial {
     }
 }
 #[derive(Default, Clone)]
-pub struct SpriteMaterialDefinition;
+pub struct SkyboxMaterialDefinition;
 
-impl SpriteMaterialDefinition {
+impl SkyboxMaterialDefinition {
     pub fn create_instance(
         &self,
         render_context: &RenderContext,
-        desc: SpriteMaterialDescriptor,
+        desc: SkyboxMaterialDescriptor,
         layout: &wgpu::BindGroupLayout,
-    ) -> SpriteMaterial {
+    ) -> SkyboxEnvironmentMaterial {
         let texture = Arc::clone(&desc.texture.view);
-
-        let config = SpriteSheetUniform {
-            config: [desc.grid_size.0 as f32, desc.grid_size.1 as f32, 0.0, 0.0],
-        };
-
-        let uniform_buffer =
-            render_context
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Sprite Animation Buffer"),
-                    contents: bytemuck::cast_slice(&[config]),
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                });
 
         let bind_group = render_context
             .device
@@ -80,26 +63,18 @@ impl SpriteMaterialDefinition {
                             &render_context.common_nearest_sampler,
                         ),
                     },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::Buffer(
-                            uniform_buffer.as_entire_buffer_binding(),
-                        ),
-                    },
                 ],
                 label: Some("Sprite material bind group"),
             });
 
-        SpriteMaterial {
+        SkyboxEnvironmentMaterial {
             texture,
-            config: Cell::new(config),
-            uniform_buffer,
             bind_group,
         }
     }
 }
 
-impl SpriteMaterialDefinition {
+impl SkyboxMaterialDefinition {
     pub fn create_pipeline(
         environment: &PipelineVisitorEnvironment<'_>,
     ) -> Result<wgpu::RenderPipeline, anyhow::Error> {
@@ -136,16 +111,6 @@ impl SpriteMaterialDefinition {
                             binding: 1,
                             visibility: wgpu::ShaderStages::FRAGMENT,
                             ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 2,
-                            visibility: wgpu::ShaderStages::VERTEX,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Uniform,
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
                             count: None,
                         },
                     ],
