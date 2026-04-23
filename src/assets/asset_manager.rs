@@ -5,6 +5,10 @@ use crate::core::model_node::ModelNode;
 use crate::core::render_context::RenderContext;
 use crate::core::texture::Texture;
 use crate::core::texture_builder::{ComponentPrecision, TextureBuilder, TextureChannels};
+use crate::renderer::compute_task::ComputeTaskFactory;
+use crate::renderer::compute_task::equirect_to_cubemap::{
+    EquirectToCubemapTask, EquirectToCubemapTaskDescriptor,
+};
 use crate::renderer::materials::pbr_material::PhysicalMaterialDescriptor;
 use crate::renderer::materials::{MaterialFactory, SkyboxMaterialDescriptor};
 use crate::util::geometry_generator::MeshUtil;
@@ -19,19 +23,22 @@ pub struct GltfAsset {
     pub scene_roots: Vec<Arc<ModelNode>>,
 }
 
-pub struct AssetLoader<'ctx, 'fac> {
+pub struct AssetManager<'ctx> {
     pub ctx: &'ctx RenderContext<'ctx>,
-    pub material_factory: &'fac MaterialFactory<'ctx>,
+    pub material_factory: MaterialFactory<'ctx>,
+    pub compute_task_factory: ComputeTaskFactory<'ctx>,
 }
 
-impl<'ctx, 'fac> AssetLoader<'ctx, 'fac> {
+impl<'ctx> AssetManager<'ctx> {
     pub fn new(
         ctx: &'ctx RenderContext<'ctx>,
-        material_factory: &'fac MaterialFactory<'ctx>,
+        material_factory: MaterialFactory<'ctx>,
+        compute_task_factory: ComputeTaskFactory<'ctx>,
     ) -> Self {
         Self {
             ctx,
             material_factory,
+            compute_task_factory,
         }
     }
 
@@ -70,6 +77,7 @@ impl<'ctx, 'fac> AssetLoader<'ctx, 'fac> {
         let sprite_texture = Arc::new(
             TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
                 .from_bytes(&diffuse_bytes)
+                .with_wgpu_format(wgpu::TextureFormat::Rgba32Float)
                 .with_filter(wgpu::FilterMode::Nearest, wgpu::FilterMode::Nearest)
                 .build(),
         );
@@ -79,10 +87,34 @@ impl<'ctx, 'fac> AssetLoader<'ctx, 'fac> {
             &MeshUtil::new_procedural_quad(),
         ));
 
+        let cubemap_texture = Arc::new(
+            TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
+                .with_label("equirect_cubemap")
+                .with_wgpu_format(wgpu::TextureFormat::Rgba32Float)
+                .with_size(1024, 1024)
+                .with_usage(
+                    wgpu::TextureUsages::TEXTURE_BINDING
+                        | wgpu::TextureUsages::STORAGE_BINDING
+                        | wgpu::TextureUsages::COPY_DST,
+                )
+                .build(),
+        );
+
+        let compute_task = self
+            .compute_task_factory
+            .create_task::<EquirectToCubemapTask>(EquirectToCubemapTaskDescriptor {
+                input_texture: Arc::clone(&sprite_texture),
+                output_cubemap: Arc::clone(&cubemap_texture),
+            });
+
+        self.compute_task_factory
+            .create_executor()
+            .execute_immediate(&self.ctx, &compute_task);
+
         let material = self
             .material_factory
             .create_material::<SkyboxEnvironmentMaterial>(SkyboxMaterialDescriptor {
-                texture: Arc::clone(&sprite_texture),
+                texture: Arc::clone(&cubemap_texture),
             });
 
         Ok(Skybox {

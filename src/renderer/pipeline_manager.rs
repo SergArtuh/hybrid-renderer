@@ -6,10 +6,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+use anyhow::Context;
 use notify::{Event, RecursiveMode, Watcher};
 
 use crate::{
     core::{
+        compute_task::{ComputeTaskTrait, ComputeTaskType},
         material::{Material, MaterialTrait, MaterialType},
         render_context::RenderContext,
     },
@@ -93,7 +95,8 @@ impl ShaderWatcher {
     }
 }
 
-pub type PipelineBuilderFn = fn(&PipelineVisitorEnvironment) -> Result<wgpu::RenderPipeline, anyhow::Error>;
+pub type PipelineBuilderFn =
+    fn(&PipelineVisitorEnvironment) -> Result<wgpu::RenderPipeline, anyhow::Error>;
 
 type ReloadFn = Box<
     dyn Fn(
@@ -103,8 +106,10 @@ type ReloadFn = Box<
 >;
 
 pub struct PipelineManager {
-    pipelines: HashMap<MaterialType, wgpu::RenderPipeline>,
+    render_pipelines: HashMap<MaterialType, wgpu::RenderPipeline>,
+    compute_pipelines: HashMap<ComputeTaskType, wgpu::ComputePipeline>,
     base_shaders_path: PathBuf,
+    base_compute_shaders_path: PathBuf,
     #[cfg(feature = "shader-hot-reload")]
     shader_watcher: Option<ShaderWatcher>,
     #[cfg(feature = "shader-hot-reload")]
@@ -117,8 +122,14 @@ impl PipelineManager {
         let base_shaders_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("src")
             .join("renderer")
-            .join("materials")
-            .join("shaders");
+            .join("shaders")
+            .join("surface");
+
+        let base_compute_shaders_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("renderer")
+            .join("shaders")
+            .join("compute");
 
         #[cfg(feature = "shader-hot-reload")]
         let shader_watcher = ShaderWatcher::new(&base_shaders_path);
@@ -129,8 +140,10 @@ impl PipelineManager {
         };
 
         Self {
-            pipelines: HashMap::new(),
+            render_pipelines: HashMap::new(),
+            compute_pipelines: HashMap::new(),
             base_shaders_path,
+            base_compute_shaders_path,
             #[cfg(feature = "shader-hot-reload")]
             shader_watcher,
             #[cfg(feature = "shader-hot-reload")]
@@ -165,7 +178,7 @@ impl PipelineManager {
         let render_pipeline = pipeline_builder(&pipeline_visitor_env);
 
         if let Ok(render_pipeline) = render_pipeline {
-            self.pipelines.insert(material_type, render_pipeline);
+            self.render_pipelines.insert(material_type, render_pipeline);
 
             #[cfg(feature = "shader-hot-reload")]
             {
@@ -180,10 +193,78 @@ impl PipelineManager {
         }
     }
 
+    pub fn register_compute_pipeline<T: ComputeTaskTrait>(
+        &mut self,
+        context: &RenderContext,
+        interface: Arc<RefCell<LayoutInterface>>,
+    ) {
+        let task_type = T::TYPE;
+        let shader_path = self.base_compute_shaders_path.join(T::get_shader_path());
+
+        let bind_group_layout =
+            context
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some(&format!("{:?} Layout", task_type)),
+                    entries: &T::get_bind_group_layout_entries(),
+                });
+
+        let pipeline_layout =
+            context
+                .device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some(&format!("{:?} Layout", task_type)),
+                    bind_group_layouts: &[&bind_group_layout],
+                    push_constant_ranges: &[],
+                });
+
+        let source = std::fs::read_to_string(shader_path.clone())
+            .with_context(|| format!("Failed to read shader file at {:?}", shader_path.clone()));
+
+        let source = match source {
+            Ok(source) => source,
+            Err(e) => panic!("Failed to read shader file at {:?}: {}", shader_path, e),
+        };
+
+        let label = shader_path.to_str().unwrap();
+
+        let shader_module = context
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some(label),
+                source: wgpu::ShaderSource::Wgsl(source.into()),
+            });
+
+        let pipeline = context
+            .device
+            .create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some(&format!("{:?} Pipeline", task_type)),
+                layout: Some(&pipeline_layout),
+                module: &shader_module,
+                entry_point: T::entry_point(),
+                compilation_options: wgpu::PipelineCompilationOptions {
+                    constants: &std::collections::HashMap::new(),
+                    zero_initialize_workgroup_memory: false,
+                },
+            });
+
+        self.compute_pipelines.insert(task_type, pipeline);
+        interface
+            .borrow_mut()
+            .compute_tasks
+            .insert(task_type, Arc::new(bind_group_layout));
+    }
+
     pub fn get_pipeline(&self, material: &Material) -> &wgpu::RenderPipeline {
-        self.pipelines
+        self.render_pipelines
             .get(&material.kind())
             .expect("Pipeline not registered for material type")
+    }
+
+    pub fn get_compute_pipeline(&self, task_type: ComputeTaskType) -> &wgpu::ComputePipeline {
+        self.compute_pipelines
+            .get(&task_type)
+            .expect("Pipeline not registered for task type")
     }
 
     #[allow(unused_variables)]
@@ -216,7 +297,7 @@ impl PipelineManager {
                 let pipeline = reloader(self, &pipeline_visitor_env);
 
                 if let Ok(pipeline) = pipeline {
-                    self.pipelines
+                    self.render_pipelines
                         .insert(pipeline_definition.material_type, pipeline);
                 } else {
                     println!(

@@ -1,6 +1,7 @@
 use crate::core::render_context::RenderContext;
 use std::{cell::Cell, sync::Arc};
 
+
 #[derive(Hash, Eq, PartialEq, Debug, Clone, Copy)]
 pub enum MaterialType {
     Sprite,

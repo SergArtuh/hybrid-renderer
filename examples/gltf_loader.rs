@@ -1,4 +1,3 @@
-use hybrid_renderer::assets::asset_loader::AssetLoader;
 use hybrid_renderer::assets::model::Model;
 use std::sync::Arc;
 use std::time::Instant;
@@ -93,9 +92,8 @@ pub fn run() {
     let render_context = RenderContext::new(device, queue, surface, config);
     let mut renderer = Renderer::new(&render_context);
 
-    let material_factory = renderer.get_material_factory(&render_context);
-    let asset_loader = AssetLoader::new(&render_context, &material_factory);
-    let models = asset_loader
+    let asset_manager = renderer.get_asset_manager(&render_context);
+    let models = asset_manager
         .load_gltf_models("assets/models/porsche.glb")
         .unwrap();
 

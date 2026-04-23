@@ -1,4 +1,5 @@
 pub mod camera;
+pub mod compute_task;
 pub mod material;
 pub mod material_builder;
 pub mod math;

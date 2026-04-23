@@ -50,5 +50,11 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return textureSample(t_texture, s_texture, in.uv);
+     let hdr_color = textureSample(t_texture, s_texture, in.uv);
+
+    // Simplified Reinhard tone mapping
+    let tone_mapped_rgb = hdr_color.rgb / (hdr_color.rgb + vec3<f32>(1.0));
+    return vec4<f32>(tone_mapped_rgb, hdr_color.a);
+    //return vec4<f32>(hdr_color.rgb, 1.0);
+    //return textureSample(t_texture, s_texture, in.uv);
 }

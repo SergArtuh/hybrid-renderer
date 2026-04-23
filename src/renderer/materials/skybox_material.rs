@@ -182,4 +182,10 @@ impl SkyboxMaterialDefinition {
 
         Ok(pipeline)
     }
+
+    // pub fn create_skybox_cubemap(
+    //     &self,
+    //     desc: SkyboxMaterialDescriptor,
+    // ) -> Result<Arc<Texture>, anyhow::Error> {
+    // }
 }
