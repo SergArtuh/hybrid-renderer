@@ -92,6 +92,7 @@ impl<'ctx> AssetManager<'ctx> {
                 .with_label("equirect_cubemap")
                 .with_wgpu_format(wgpu::TextureFormat::Rgba32Float)
                 .with_size(1024, 1024)
+                .as_cubemap()
                 .with_usage(
                     wgpu::TextureUsages::TEXTURE_BINDING
                         | wgpu::TextureUsages::STORAGE_BINDING

@@ -1,13 +1,8 @@
-// struct VertexInput {
-//     @location(0) position: vec3<f32>,
-//     @location(1) normal: vec3<f32>,
-//     @location(2) uv: vec2<f32>,
-// };
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0)  normal: vec3<f32>,
-    @location(1)  uv: vec2<f32>,
+    @location(1) view_dir: vec3<f32>,
 };
 
 struct CameraUniform {
@@ -22,14 +17,13 @@ struct ModelUniform {
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
 @group(1) @binding(0) var<uniform> model: ModelUniform;
 
-@group(2) @binding(0) var t_texture: texture_2d<f32>;
+@group(2) @binding(0) var t_cubemap: texture_cube<f32>;
 @group(2) @binding(1) var s_texture: sampler;
 
 
 @vertex
 fn vs_main(
     @builtin(vertex_index) in_vertex_index: u32
-    //vertex: VertexInput
 ) -> VertexOutput {
     var pos: vec2<f32>;
     var uv: vec2<f32>;
@@ -43,14 +37,15 @@ fn vs_main(
     }
 
     var out: VertexOutput;
-    out.clip_position = vec4<f32>(pos, 0.0, 1.0);
-    out.uv = uv;
+    out.clip_position = vec4<f32>(pos, 1.0, 1.0);
+    //out.uv = uv;
+    out.view_dir = vec3<f32>(pos.x, pos.y, -1.0);
     return out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-     let hdr_color = textureSample(t_texture, s_texture, in.uv);
+     let hdr_color = textureSample(t_cubemap, s_texture, normalize(in.view_dir));
 
     // Simplified Reinhard tone mapping
     let tone_mapped_rgb = hdr_color.rgb / (hdr_color.rgb + vec3<f32>(1.0));

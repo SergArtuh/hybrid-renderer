@@ -101,6 +101,10 @@ pub fn run() {
         let model = Model::new(Arc::clone(model_node), glam::Mat4::IDENTITY);
         stage.add_model(model);
     }
+    let skybox = asset_manager
+        .load_skybox("assets/modern_buildings_night_1k.exr")
+        .unwrap();
+    stage.set_skybox(skybox);
 
     let mut last_time = Instant::now();
     let mut frame_time = 0.0;

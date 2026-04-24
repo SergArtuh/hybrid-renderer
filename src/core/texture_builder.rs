@@ -85,6 +85,7 @@ pub struct TextureBuilder<'a> {
     source: TextureSource<'a>,
     size: Option<(u32, u32)>,
     usage: wgpu::TextureUsages,
+    is_cubemap: bool,
 }
 
 impl<'a> TextureBuilder<'a> {
@@ -105,6 +106,7 @@ impl<'a> TextureBuilder<'a> {
             source: TextureSource::Empty,
             size: None,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            is_cubemap: false,
         }
     }
 
@@ -178,14 +180,21 @@ impl<'a> TextureBuilder<'a> {
         self
     }
 
+    pub fn as_cubemap(mut self) -> Self {
+        self.is_cubemap = true;
+        self
+    }
+
     pub fn build(mut self) -> Texture {
         let source = std::mem::replace(&mut self.source, TextureSource::Empty);
         let (width, height, rgba) = self.resolve_image_data(source);
 
+        let layers = if self.is_cubemap { 6 } else { 1 };
+
         let texture_size = wgpu::Extent3d {
             width,
             height,
-            depth_or_array_layers: 1,
+            depth_or_array_layers: layers,
         };
 
         let (format, channel_count, byte_per_chanel) = self.get_texture_format_description(&rgba);
@@ -224,7 +233,26 @@ impl<'a> TextureBuilder<'a> {
             texture_size,
         );
 
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let (view, array_view) = if self.is_cubemap {
+            (
+                texture.create_view(&wgpu::TextureViewDescriptor {
+                    label: Some("Cubemap View"),
+                    dimension: Some(wgpu::TextureViewDimension::Cube),
+                    ..Default::default()
+                }),
+                Some(texture.create_view(&wgpu::TextureViewDescriptor {
+                    label: Some("Array View"),
+                    dimension: Some(wgpu::TextureViewDimension::D2Array),
+                    ..Default::default()
+                })),
+            )
+        } else {
+            (
+                texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                None,
+            )
+        };
+
         let sampler = self.device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: self.address_mode,
             address_mode_v: self.address_mode,
@@ -238,6 +266,7 @@ impl<'a> TextureBuilder<'a> {
         Texture {
             texture: Arc::new(texture),
             view: Arc::new(view),
+            array_view,
             sampler: Arc::new(sampler),
             width,
             height,
@@ -359,6 +388,8 @@ impl<'a> TextureBuilder<'a> {
             .size
             .expect("Size must be provided for empty texture if no bytes/image are provided");
 
+        let layers = if self.is_cubemap { 6 } else { 1 };
+
         let channels = match self.format.channels {
             TextureChannels::RGB => 4,
             TextureChannels::R => 1,
@@ -366,19 +397,17 @@ impl<'a> TextureBuilder<'a> {
             TextureChannels::RGBA => 4,
         };
 
+        let total_elements = (width * height * channels * layers) as usize;
+
         if self.format.precision == ComponentPrecision::Auto
             || self.format.precision == ComponentPrecision::U8
         {
-            (
-                width,
-                height,
-                RawTextureData::U8(vec![0; (width * height * channels) as usize]),
-            )
+            (width, height, RawTextureData::U8(vec![0; total_elements]))
         } else {
             (
                 width,
                 height,
-                RawTextureData::F32(vec![0.0f32; (width * height * channels) as usize]),
+                RawTextureData::F32(vec![0.0f32; total_elements]),
             )
         }
     }

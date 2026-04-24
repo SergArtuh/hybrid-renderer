@@ -66,7 +66,7 @@ impl ForwardPass {
             rpass.set_bind_group(0, &camera_manager.bind_group, &[]);
             rpass.set_bind_group(1, &model_manager.bind_group, &[0u32]);
             rpass.set_bind_group(2, &skybox.material.bind_group(), &[]);
-            
+
             match (&skybox.mesh.vertex_buffer, &skybox.mesh.index_buffer) {
                 (Some(vertex_buffer), Some(index_buffer)) => {
                     rpass.set_vertex_buffer(0, vertex_buffer.slice(..));

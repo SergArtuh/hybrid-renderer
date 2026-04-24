@@ -102,7 +102,7 @@ impl SkyboxMaterialDefinition {
                             visibility: wgpu::ShaderStages::FRAGMENT,
                             ty: wgpu::BindingType::Texture {
                                 multisampled: false,
-                                view_dimension: wgpu::TextureViewDimension::D2,
+                                view_dimension: wgpu::TextureViewDimension::Cube,
                                 sample_type: wgpu::TextureSampleType::Float { filterable: false },
                             },
                             count: None,
@@ -160,11 +160,10 @@ impl SkyboxMaterialDefinition {
                         topology: wgpu::PrimitiveTopology::TriangleList,
                         ..Default::default()
                     },
-                    //depth_stencil: None,
                     depth_stencil: Some(wgpu::DepthStencilState {
                         format: DEFAULT_DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::Less,
+                        depth_write_enabled: false,
+                        depth_compare: wgpu::CompareFunction::LessEqual,
                         stencil: wgpu::StencilState::default(),
                         bias: wgpu::DepthBiasState::default(),
                     }),
