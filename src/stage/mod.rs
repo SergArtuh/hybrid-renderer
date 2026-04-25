@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::{
     assets::{camera::Camera, model::Model, skybox::Skybox},
-    core::{camera::CameraUniform, model_node::ModelNode},
+    core::model_node::ModelNode,
     stage::frame_data::{FrameData, RenderItem},
 };
 
@@ -43,9 +43,7 @@ impl Stage {
             render_items.extend(model_render_items);
         }
         FrameData {
-            camera_uniform: CameraUniform {
-                view_proj: self.main_camera.calc_matrix(),
-            },
+            camera_uniform: self.main_camera.get_uniform(),
             render_items,
             skybox: self.skybox.clone(),
         }

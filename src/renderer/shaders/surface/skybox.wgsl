@@ -7,6 +7,7 @@ struct VertexOutput {
 
 struct CameraUniform {
     proj_view: mat4x4<f32>,
+    inv_skybox_view_proj: mat4x4<f32>,
 }
 
 struct ModelUniform {
@@ -38,8 +39,8 @@ fn vs_main(
 
     var out: VertexOutput;
     out.clip_position = vec4<f32>(pos, 1.0, 1.0);
-    //out.uv = uv;
-    out.view_dir = vec3<f32>(pos.x, pos.y, -1.0);
+    let unprojected = camera.inv_skybox_view_proj * vec4<f32>(pos, 1.0, 1.0);
+    out.view_dir = unprojected.xyz / unprojected.w;
     return out;
 }
 

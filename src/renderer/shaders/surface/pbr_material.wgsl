@@ -12,6 +12,7 @@ struct VertexOutput {
 
 struct CameraUniform {
     proj_view: mat4x4<f32>,
+    inv_skybox_view_proj: mat4x4<f32>,
 }
 
 struct ModelUniform {
