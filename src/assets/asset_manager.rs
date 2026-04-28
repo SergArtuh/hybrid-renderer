@@ -77,8 +77,8 @@ impl<'ctx> AssetManager<'ctx> {
         let sprite_texture = Arc::new(
             TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
                 .from_bytes(&diffuse_bytes)
-                .with_wgpu_format(wgpu::TextureFormat::Rgba32Float)
-                .with_filter(wgpu::FilterMode::Nearest, wgpu::FilterMode::Nearest)
+                .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+                .with_filter(wgpu::FilterMode::Linear, wgpu::FilterMode::Linear)
                 .build(),
         );
 
@@ -90,7 +90,7 @@ impl<'ctx> AssetManager<'ctx> {
         let cubemap_texture = Arc::new(
             TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
                 .with_label("equirect_cubemap")
-                .with_wgpu_format(wgpu::TextureFormat::Rgba32Float)
+                .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
                 .with_size(1024, 1024)
                 .as_cubemap()
                 .with_usage(

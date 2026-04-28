@@ -1,4 +1,5 @@
 use super::texture::Texture;
+use half::f16;
 use std::sync::Arc;
 
 pub enum TextureSource<'a> {
@@ -15,6 +16,7 @@ pub enum TextureSource<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ComponentPrecision {
     U8,
+    F16,
     F32,
     Auto,
 }
@@ -36,6 +38,7 @@ pub struct TextureFormatDescriptor {
 
 enum RawTextureData {
     U8(Vec<u8>),
+    F16(Vec<f16>),
     F32(Vec<f32>),
 }
 
@@ -51,6 +54,9 @@ impl IntoWgpuFormat for wgpu::TextureFormat {
             wgpu::TextureFormat::Rgba8Unorm => TextureChannels::RGBA,
             wgpu::TextureFormat::Rgba8UnormSrgb => TextureChannels::RGBA,
             wgpu::TextureFormat::Rgba32Float => TextureChannels::RGBA,
+            wgpu::TextureFormat::Rgba16Float => TextureChannels::RGBA,
+            wgpu::TextureFormat::Rg16Float => TextureChannels::RG,
+            wgpu::TextureFormat::R16Float => TextureChannels::R,
             _ => panic!("Unsupported format to linear: {:?}", self),
         };
         let precision = match self {
@@ -59,6 +65,9 @@ impl IntoWgpuFormat for wgpu::TextureFormat {
             wgpu::TextureFormat::Rgba8Unorm => ComponentPrecision::U8,
             wgpu::TextureFormat::Rgba8UnormSrgb => ComponentPrecision::U8,
             wgpu::TextureFormat::Rgba32Float => ComponentPrecision::F32,
+            wgpu::TextureFormat::Rgba16Float => ComponentPrecision::F16,
+            wgpu::TextureFormat::Rg16Float => ComponentPrecision::F16,
+            wgpu::TextureFormat::R16Float => ComponentPrecision::F16,
             _ => panic!("Unsupported format to linear: {:?}", self),
         };
         let is_srgb = match self {
@@ -214,6 +223,7 @@ impl<'a> TextureBuilder<'a> {
 
         let rgba_data = match &rgba {
             RawTextureData::U8(data) => bytemuck::cast_slice(&data),
+            RawTextureData::F16(data) => bytemuck::cast_slice(&data),
             RawTextureData::F32(data) => bytemuck::cast_slice(&data),
         };
 
@@ -300,6 +310,14 @@ impl<'a> TextureBuilder<'a> {
                 };
                 (format, channels, 1)
             }
+            RawTextureData::F16(_) => {
+                let format = match channels {
+                    1 => TF::R16Float,
+                    2 => TF::Rg16Float,
+                    _ => TF::Rgba16Float,
+                };
+                (format, channels, 2)
+            }
             RawTextureData::F32(_) => {
                 let format = match channels {
                     1 => TF::R32Float,
@@ -332,7 +350,7 @@ impl<'a> TextureBuilder<'a> {
             Some(dbg!(img.color()))
         } else {
             match self.format.precision {
-                ComponentPrecision::F32 => Some(image::ColorType::Rgba32F),
+                ComponentPrecision::F32 | ComponentPrecision::F16 => Some(image::ColorType::Rgba32F),
                 ComponentPrecision::U8 => Some(image::ColorType::Rgba8),
                 _ => panic!("Unsupported precision: {:?}", self.format.precision),
             }
@@ -342,7 +360,16 @@ impl<'a> TextureBuilder<'a> {
             image::ColorType::Rgba32F | image::ColorType::Rgb32F => {
                 let rgba = img.to_rgba32f();
                 let (w, h) = rgba.dimensions();
-                (w, h, RawTextureData::F32(rgba.into_raw()))
+                if self.format.precision == ComponentPrecision::F16 {
+                    let f16_data: Vec<f16> = rgba
+                        .into_raw()
+                        .into_iter()
+                        .map(f16::from_f32)
+                        .collect();
+                    (w, h, RawTextureData::F16(f16_data))
+                } else {
+                    (w, h, RawTextureData::F32(rgba.into_raw()))
+                }
             }
             image::ColorType::Rgba8 | image::ColorType::Rgb8 => {
                 let rgba = img.to_rgba8();
@@ -375,6 +402,23 @@ impl<'a> TextureBuilder<'a> {
                 TextureChannels::RG => (width, height, RawTextureData::U8(pixels.to_vec())),
                 TextureChannels::RGBA => (width, height, RawTextureData::U8(pixels.to_vec())),
             }
+        } else if self.format.precision == ComponentPrecision::F16 {
+            match self.format.channels {
+                TextureChannels::RGB => {
+                    let mut rgba = Vec::with_capacity(pixels.len() / 3 * 4);
+                    // Assuming raw f16 bytes are passed (2 bytes per channel)
+                    let f16_pixels = bytemuck::cast_slice::<u8, f16>(pixels);
+                    for rgb in f16_pixels.chunks_exact(3) {
+                        rgba.extend_from_slice(rgb);
+                        rgba.push(f16::from_f32(1.0));
+                    }
+                    (width, height, RawTextureData::F16(rgba))
+                }
+                _ => {
+                    let f16_pixels = bytemuck::cast_slice::<u8, f16>(pixels);
+                    (width, height, RawTextureData::F16(f16_pixels.to_vec()))
+                }
+            }
         } else {
             panic!(
                 "Unsupported precision for raw data: {:?}",
@@ -403,6 +447,8 @@ impl<'a> TextureBuilder<'a> {
             || self.format.precision == ComponentPrecision::U8
         {
             (width, height, RawTextureData::U8(vec![0; total_elements]))
+        } else if self.format.precision == ComponentPrecision::F16 {
+            (width, height, RawTextureData::F16(vec![f16::ZERO; total_elements]))
         } else {
             (
                 width,
