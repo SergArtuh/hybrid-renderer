@@ -27,7 +27,7 @@ impl ComputeTaskTrait for EquirectToCubemapTask {
                 binding: 0,
                 visibility: wgpu::ShaderStages::COMPUTE,
                 ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
                     view_dimension: wgpu::TextureViewDimension::D2,
                     multisampled: false,
                 },
@@ -38,9 +38,15 @@ impl ComputeTaskTrait for EquirectToCubemapTask {
                 visibility: wgpu::ShaderStages::COMPUTE,
                 ty: wgpu::BindingType::StorageTexture {
                     access: wgpu::StorageTextureAccess::WriteOnly,
-                    format: wgpu::TextureFormat::Rgba32Float, // TODO: make it configurable
+                    format: wgpu::TextureFormat::Rgba16Float, // TODO: make it configurable
                     view_dimension: wgpu::TextureViewDimension::D2Array,
                 },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 2,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                 count: None,
             },
         ]
@@ -69,6 +75,10 @@ impl ComputeTaskTrait for EquirectToCubemapTask {
                     wgpu::BindGroupEntry {
                         binding: 1,
                         resource: wgpu::BindingResource::TextureView(&cubemap_view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Sampler(&render_context.common_sampler),
                     },
                 ],
                 label: Some("Equirect to Cubemap Bind Group"),

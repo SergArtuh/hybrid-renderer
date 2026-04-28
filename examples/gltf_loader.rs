@@ -12,7 +12,7 @@ use hybrid_renderer::renderer::Renderer;
 use hybrid_renderer::stage::Stage;
 
 //const CAMERA_DISTANCE: f32 = 250.0;
-const CAMERA_DISTANCE: f32 = 5.0;
+const CAMERA_DISTANCE: f32 = 3.0;
 
 pub fn run() {
     let event_loop = EventLoop::new().unwrap();
@@ -80,9 +80,9 @@ pub fn run() {
 
     surface.configure(&device, &config);
 
-    let camera = Camera::new(Vec3::new(0.0, 0.0, CAMERA_DISTANCE))
+    let camera = Camera::new(Vec3::new(0.0, 1., CAMERA_DISTANCE))
         .with_target(Vec3::new(0.0, 0.0, 0.0))
-        .with_fov(45.0)
+        .with_fov(90.0)
         .with_near(0.1)
         .with_far(1000.0)
         .with_aspect(size.width as f32 / size.height as f32);

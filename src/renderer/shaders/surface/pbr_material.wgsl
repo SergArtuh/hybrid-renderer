@@ -13,6 +13,7 @@ struct VertexOutput {
 struct CameraUniform {
     proj_view: mat4x4<f32>,
     inv_skybox_view_proj: mat4x4<f32>,
+    position: vec4<f32>, 
 }
 
 struct ModelUniform {
@@ -36,7 +37,7 @@ fn vs_main(
     vertex: VertexInput
 ) -> VertexOutput {
     var out: VertexOutput;
-    out.clip_position = camera.proj_view * model.model_matrix * vec4<f32>(vertex.position, 1.0);
+    out.clip_position = camera.proj_view * (model.model_matrix * vec4<f32>(vertex.position, 1.0) +  vec4<f32>(0.0, 0.6, 0.0, 0.0));
     out.normal = vertex.normal;
     out.uv = vertex.uv;
     return out;
@@ -54,8 +55,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let roughness = orm.g;
     let metallic = orm.b;
     
-    return base_color;
-    //return vec4<f32>(normal.r, normal.g, 1.0, 1.0);
+    //return base_color;
+    return vec4<f32>(in.clip_position.xyz / in.clip_position.w, 1.0);
     //return vec4<f32>(roughness, roughness, roughness, 1.0);
     //return vec4<f32>(metallic, metallic, metallic, 1.0);
     //return vec4<f32>(occlusion.rgb, 1.0);

@@ -1,5 +1,6 @@
 @group(0) @binding(0) var input_tex: texture_2d<f32>;
-@group(0) @binding(1) var output_tex: texture_storage_2d_array<rgba32float, write>;
+@group(0) @binding(1) var output_tex: texture_storage_2d_array<rgba16float, write>;
+@group(0) @binding(2) var input_sampler: sampler;
 
 const PI: f32 = 3.14159265359;
 const TWO_PI: f32 = 6.28318530718;
@@ -34,10 +35,7 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let theta = asin(dir.y);
     let uv = vec2<f32>(phi * INV_TWO_PI + 0.5, 0.5 - theta * INV_PI);
 
-    let input_dims = vec2<f32>(textureDimensions(input_tex));
-
-    let sample_coord = vec2<u32>(clamp(uv * input_dims, vec2<f32>(0.0), input_dims - 1.0));
-    let color = textureLoad(input_tex, sample_coord, 0);
+    let color = textureSampleLevel(input_tex, input_sampler, uv, 0.0);
 
     textureStore(output_tex, id.xy, id.z, color);
 }

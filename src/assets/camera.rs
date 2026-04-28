@@ -87,6 +87,7 @@ impl Camera {
         CameraUniform {
             view_proj,
             inv_skybox_view_proj,
+            position: self.position.extend(1.0),
         }
     }
 }
