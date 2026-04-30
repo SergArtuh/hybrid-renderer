@@ -1,4 +1,3 @@
-use hybrid_renderer::assets::asset_loader::AssetLoader;
 use hybrid_renderer::assets::model::Model;
 use std::sync::Arc;
 use std::time::Instant;
@@ -81,9 +80,9 @@ pub fn run() {
 
     surface.configure(&device, &config);
 
-    let camera = Camera::new(Vec3::new(0.0, 0.0, CAMERA_DISTANCE))
+    let camera = Camera::new(Vec3::new(0.0, 1., CAMERA_DISTANCE))
         .with_target(Vec3::new(0.0, 0.0, 0.0))
-        .with_fov(45.0)
+        .with_fov(60.0)
         .with_near(0.1)
         .with_far(1000.0)
         .with_aspect(size.width as f32 / size.height as f32);
@@ -93,9 +92,8 @@ pub fn run() {
     let render_context = RenderContext::new(device, queue, surface, config);
     let mut renderer = Renderer::new(&render_context);
 
-    let material_factory = renderer.get_material_factory(&render_context);
-    let asset_loader = AssetLoader::new(&render_context, &material_factory);
-    let models = asset_loader
+    let asset_manager = renderer.get_asset_manager(&render_context);
+    let models = asset_manager
         .load_gltf_models("assets/models/porsche.glb")
         .unwrap();
 
@@ -103,6 +101,12 @@ pub fn run() {
         let model = Model::new(Arc::clone(model_node), glam::Mat4::IDENTITY);
         stage.add_model(model);
     }
+    let skydome = asset_manager
+        //.load_skybox("assets/modern_buildings_night_1k.exr")
+        //.load_skybox("assets/modern_buildings_night_8k.exr")
+        .load_skydome("assets/zwartkops_curve_sunset_4k.exr", 150.0, 0.95)
+        .unwrap();
+    stage.set_skydome(skydome);
 
     let mut last_time = Instant::now();
     let mut frame_time = 0.0;

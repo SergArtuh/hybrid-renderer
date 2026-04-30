@@ -12,6 +12,8 @@ struct VertexOutput {
 
 struct CameraUniform {
     proj_view: mat4x4<f32>,
+    inv_skybox_view_proj: mat4x4<f32>,
+    position: vec4<f32>, 
 }
 
 struct ModelUniform {
@@ -55,7 +57,7 @@ fn vs_main(
     }
 
     var out: VertexOutput;
-    out.clip_position = vec4<f32>(pos, 0.0, 1.0);
+    out.clip_position = vec4<f32>(pos * 0.5, 0.0, 1.0);
 
     let scale = vec2<f32>(1.0 / atlas.columns, 1.0 / atlas.rows);
     let column = atlas.frame_index % atlas.columns;

@@ -5,11 +5,19 @@ use std::{cell::Cell, sync::Arc};
 pub enum MaterialType {
     Sprite,
     Physical,
+    Skydome,
+}
+
+pub enum MaterialDomain {
+    Surface,
+    PostProcess,
+    Environment,
 }
 
 pub enum Material {
     Sprite(SpriteMaterial),
     Physical(PhysicalMaterial),
+    Skydome(SkydomeEnvironmentMaterial),
 }
 
 impl Material {
@@ -17,12 +25,14 @@ impl Material {
         match self {
             Material::Sprite(_) => MaterialType::Sprite,
             Material::Physical(_) => MaterialType::Physical,
+            Material::Skydome(_) => MaterialType::Skydome,
         }
     }
     pub fn bind_group(&self) -> &wgpu::BindGroup {
         match self {
             Material::Sprite(sprite_material) => &sprite_material.bind_group,
             Material::Physical(physical_material) => &physical_material.bind_group,
+            Material::Skydome(skydome_material) => &skydome_material.bind_group,
         }
     }
 }
@@ -30,8 +40,8 @@ impl Material {
 pub trait MaterialTrait: Sized {
     type Descriptor;
     const TYPE: MaterialType;
+    const DOMAIN: MaterialDomain;
     fn get_layout() -> &'static [wgpu::VertexBufferLayout<'static>];
-    // Метод создания "живого" материала из описания
     fn create(
         _context: &RenderContext,
         _desc: Self::Descriptor,
@@ -73,5 +83,11 @@ pub struct PhysicalMaterial {
     pub metallic_roughness: Arc<wgpu::TextureView>,
     pub occlusion: Arc<wgpu::TextureView>,
     pub emissive: Arc<wgpu::TextureView>,
+    pub bind_group: wgpu::BindGroup,
+}
+
+pub struct SkydomeEnvironmentMaterial {
+    pub texture: Arc<wgpu::TextureView>,
+    pub uniform_buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
 }

@@ -1,5 +1,8 @@
+use glam::Vec4Swizzles;
+
 use crate::core::math::Mat4;
 use crate::core::math::Vec3;
+use crate::core::uniforms::CameraUniform;
 
 #[derive(Debug)]
 pub struct Camera {
@@ -48,9 +51,20 @@ impl Camera {
         self
     }
 
-    pub fn calc_matrix(&self) -> Mat4 {
+    pub fn get_uniform(&self) -> CameraUniform {
         let view = Mat4::look_at_rh(self.position, self.target, Vec3::Y);
-        let proj = Mat4::perspective_rh(self.fov, self.aspect, self.near, self.far);
-        proj * view
+        let proj = Mat4::perspective_rh(self.fov.to_radians(), self.aspect, self.near, self.far);
+
+        let view_proj = proj * view;
+
+        let rotation_only =
+            glam::Mat3::from_cols(view.x_axis.xyz(), view.y_axis.xyz(), view.z_axis.xyz());
+        let inv_skybox_view_proj = (proj * Mat4::from_mat3(rotation_only)).inverse();
+
+        CameraUniform {
+            view_proj,
+            inv_skybox_view_proj,
+            position: self.position.extend(1.0),
+        }
     }
 }

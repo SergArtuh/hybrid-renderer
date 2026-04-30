@@ -51,6 +51,7 @@ impl DefaultTextures {
 pub struct Texture {
     pub texture: Arc<wgpu::Texture>,
     pub view: Arc<wgpu::TextureView>,
+    pub array_view: Option<wgpu::TextureView>,
     pub sampler: Arc<wgpu::Sampler>,
     pub width: u32,
     pub height: u32,

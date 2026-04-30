@@ -1,19 +1,25 @@
 use std::{cell::RefCell, sync::Arc};
 
 use crate::{
+    assets::asset_manager::AssetManager,
     core::{
-        material::{PhysicalMaterial, SpriteMaterial},
+        material::{PhysicalMaterial, SkydomeEnvironmentMaterial, SpriteMaterial},
         render_context::RenderContext,
     },
     renderer::{
-        camera_manager::CameraManager, frame_target::FrameTarget,
-        layout_interface::LayoutInterface, materials::MaterialFactory, model_manager::ModelManager,
+        camera_manager::CameraManager,
+        compute_task::{ComputeTaskFactory, equirect_to_cubemap::EquirectToCubemapTask},
+        frame_target::FrameTarget,
+        layout_interface::LayoutInterface,
+        materials::{MaterialFactory, skydome_material::SkydomeMaterialDefinition},
+        model_manager::ModelManager,
         pipeline_manager::PipelineManager,
     },
     stage::frame_data::FrameData,
 };
 
 pub mod camera_manager;
+pub mod compute_task;
 pub mod frame_target;
 pub mod layout_interface;
 pub mod materials;
@@ -56,6 +62,17 @@ impl Renderer {
             Arc::clone(&layout_interface),
             "sprite_material.wgsl",
             SpriteMaterialDefinition::create_pipeline,
+        );
+        pipeline_manager.register_pipeline::<SkydomeEnvironmentMaterial>(
+            render_context,
+            Arc::clone(&layout_interface),
+            "skydome.wgsl",
+            SkydomeMaterialDefinition::create_pipeline,
+        );
+
+        pipeline_manager.register_compute_pipeline::<EquirectToCubemapTask>(
+            render_context,
+            Arc::clone(&layout_interface),
         );
 
         let forward_pass = ForwardPass::default();
@@ -103,6 +120,23 @@ impl Renderer {
         render_context: &'a RenderContext,
     ) -> MaterialFactory<'a> {
         MaterialFactory::new(render_context, Arc::clone(&self.layout_interface))
+    }
+
+    pub fn get_compute_task_factory<'a>(
+        &'a self,
+        render_context: &'a RenderContext,
+    ) -> ComputeTaskFactory<'a> {
+        ComputeTaskFactory::new(
+            render_context,
+            Arc::clone(&self.layout_interface),
+            &self.pipeline_manager,
+        )
+    }
+
+    pub fn get_asset_manager<'a>(&'a self, render_context: &'a RenderContext) -> AssetManager<'a> {
+        let compute_task_factory = self.get_compute_task_factory(render_context);
+        let material_factory = self.get_material_factory(render_context);
+        AssetManager::new(render_context, material_factory, compute_task_factory)
     }
 
     fn begin_frame(&self, render_context: &RenderContext) -> FrameTarget {

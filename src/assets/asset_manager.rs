@@ -1,33 +1,43 @@
-use crate::core::material::{Material, PhysicalMaterial};
+use crate::assets::skydome::Skydome;
+use crate::core::material::{Material, PhysicalMaterial, SkydomeEnvironmentMaterial};
 use crate::core::mesh::{Mesh, MeshData};
 use crate::core::model_node::ModelNode;
 use crate::core::render_context::RenderContext;
 use crate::core::texture::Texture;
 use crate::core::texture_builder::{ComponentPrecision, TextureBuilder, TextureChannels};
-use crate::renderer::materials::MaterialFactory;
+use crate::renderer::compute_task::ComputeTaskFactory;
+use crate::renderer::compute_task::equirect_to_cubemap::{
+    EquirectToCubemapTask, EquirectToCubemapTaskDescriptor,
+};
 use crate::renderer::materials::pbr_material::PhysicalMaterialDescriptor;
+use crate::renderer::materials::{MaterialFactory, SkydomeMaterialDescriptor};
+use crate::util::geometry_generator::MeshUtil;
+use std::fs::File;
+use std::io::Read;
 use std::path::Path;
 use std::sync::Arc;
 
 pub struct GltfAsset {
     pub name: String,
-    //pub nodes: HashMap<String, Arc<ModelNode>>,
     pub scene_roots: Vec<Arc<ModelNode>>,
 }
 
-pub struct AssetLoader<'ctx, 'fac> {
+pub struct AssetManager<'ctx> {
     pub ctx: &'ctx RenderContext<'ctx>,
-    pub material_factory: &'fac MaterialFactory<'ctx>,
+    pub material_factory: MaterialFactory<'ctx>,
+    pub compute_task_factory: ComputeTaskFactory<'ctx>,
 }
 
-impl<'ctx, 'fac> AssetLoader<'ctx, 'fac> {
+impl<'ctx> AssetManager<'ctx> {
     pub fn new(
         ctx: &'ctx RenderContext<'ctx>,
-        material_factory: &'fac MaterialFactory<'ctx>,
+        material_factory: MaterialFactory<'ctx>,
+        compute_task_factory: ComputeTaskFactory<'ctx>,
     ) -> Self {
         Self {
             ctx,
             material_factory,
+            compute_task_factory,
         }
     }
 
@@ -56,6 +66,68 @@ impl<'ctx, 'fac> AssetLoader<'ctx, 'fac> {
 
         println!("Loaded gltf asset: {}", asset_name);
         Ok(gltf_asset)
+    }
+
+    pub fn load_skydome(
+        &self,
+        path: impl AsRef<Path>,
+        radius: f32,
+        factor: f32,
+    ) -> anyhow::Result<Skydome> {
+        let mut file = File::open(path).expect("File not found!");
+        let mut diffuse_bytes = Vec::<u8>::new();
+        file.read_to_end(&mut diffuse_bytes).unwrap();
+
+        let sprite_texture = Arc::new(
+            TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
+                .from_bytes(&diffuse_bytes)
+                .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+                .with_filter(wgpu::FilterMode::Linear, wgpu::FilterMode::Linear)
+                .build(),
+        );
+
+        let mesh = Arc::new(Mesh::from_data(
+            &self.ctx.device,
+            &MeshUtil::new_procedural_quad(),
+        ));
+
+        let cubemap_texture = Arc::new(
+            TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
+                .with_label("equirect_cubemap")
+                .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+                .with_size(1024, 1024)
+                .as_cubemap()
+                .with_usage(
+                    wgpu::TextureUsages::TEXTURE_BINDING
+                        | wgpu::TextureUsages::STORAGE_BINDING
+                        | wgpu::TextureUsages::COPY_DST,
+                )
+                .build(),
+        );
+
+        let compute_task = self
+            .compute_task_factory
+            .create_task::<EquirectToCubemapTask>(EquirectToCubemapTaskDescriptor {
+                input_texture: Arc::clone(&sprite_texture),
+                output_cubemap: Arc::clone(&cubemap_texture),
+            });
+
+        self.compute_task_factory
+            .create_executor()
+            .execute_immediate(&self.ctx, &compute_task);
+
+        let material = self
+            .material_factory
+            .create_material::<SkydomeEnvironmentMaterial>(SkydomeMaterialDescriptor {
+                texture: Arc::clone(&cubemap_texture),
+                dome_radius: radius,
+                dome_factor: factor,
+            });
+
+        Ok(Skydome {
+            mesh,
+            material: Arc::new(Material::Skydome(material)),
+        })
     }
 
     fn load_node(

@@ -120,6 +120,11 @@ pub fn run() {
     ));
     let model = Model::new(model_node.clone(), glam::Mat4::IDENTITY);
 
+    let asset_manager = renderer.get_asset_manager(&render_context);
+    let skydome = asset_manager
+        .load_skydome("assets/modern_buildings_night_1k.exr", 150.0, 0.95)
+        .unwrap();
+
     let camera = Camera::new(Vec3::new(0.0, 0.0, CAMERA_DISTANCE))
         .with_target(Vec3::new(0.0, 0.0, 0.0))
         .with_fov(45.0)
@@ -129,6 +134,7 @@ pub fn run() {
 
     let mut stage = Stage::new(camera);
     stage.add_model(model);
+    stage.set_skydome(skydome);
 
     let mut frame_time = 0.0;
     let sprite_animation_fps = 25.0;

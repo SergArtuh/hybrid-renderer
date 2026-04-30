@@ -1,7 +1,9 @@
 pub mod pbr_material;
+pub mod skydome_material;
 pub mod sprite_material;
 
 pub use pbr_material::PbrMaterialDefinition;
+pub use skydome_material::SkydomeMaterialDescriptor;
 pub use sprite_material::SpriteMaterialDefinition;
 
 use crate::core::material::{Material, MaterialTrait, PhysicalMaterial};

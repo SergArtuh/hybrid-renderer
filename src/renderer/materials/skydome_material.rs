@@ -1,36 +1,35 @@
-use std::{cell::Cell, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::Context;
 use wgpu::util::DeviceExt;
 
 use crate::{
     core::{
-        material::{
-            MaterialDomain, MaterialTrait, MaterialType, SpriteMaterial, SpriteSheetUniform,
-        },
+        material::{MaterialDomain, MaterialTrait, MaterialType, SkydomeEnvironmentMaterial},
         render_context::RenderContext,
         texture::Texture,
+        uniforms::SkydomeUniform,
         vertex::Vertex,
     },
     renderer::materials::{DEFAULT_DEPTH_FORMAT, PipelineVisitorEnvironment},
 };
 
-pub struct SpriteMaterialDescriptor {
+pub struct SkydomeMaterialDescriptor {
     pub texture: Arc<Texture>,
-    pub grid_size: (u32, u32),
+    pub dome_radius: f32,
+    pub dome_factor: f32,
 }
 
-impl MaterialTrait for SpriteMaterial {
-    type Descriptor = SpriteMaterialDescriptor;
-    const DOMAIN: MaterialDomain = MaterialDomain::Surface;
-    const TYPE: MaterialType = MaterialType::Sprite;
+impl MaterialTrait for SkydomeEnvironmentMaterial {
+    type Descriptor = SkydomeMaterialDescriptor;
+    const DOMAIN: MaterialDomain = MaterialDomain::Environment;
+    const TYPE: MaterialType = MaterialType::Skydome;
     fn create(
         context: &RenderContext,
         desc: Self::Descriptor,
-        //TODO: get layout from MaterialTrait
         layout: &wgpu::BindGroupLayout,
     ) -> Result<Self, anyhow::Error> {
-        let material_definition = SpriteMaterialDefinition::default();
+        let material_definition = SkydomeMaterialDefinition::default();
         let material = material_definition.create_instance(context, desc, layout);
         Ok(material)
     }
@@ -41,27 +40,25 @@ impl MaterialTrait for SpriteMaterial {
     }
 }
 #[derive(Default, Clone)]
-pub struct SpriteMaterialDefinition;
+pub struct SkydomeMaterialDefinition;
 
-impl SpriteMaterialDefinition {
+impl SkydomeMaterialDefinition {
     pub fn create_instance(
         &self,
         render_context: &RenderContext,
-        desc: SpriteMaterialDescriptor,
+        desc: SkydomeMaterialDescriptor,
         layout: &wgpu::BindGroupLayout,
-    ) -> SpriteMaterial {
+    ) -> SkydomeEnvironmentMaterial {
         let texture = Arc::clone(&desc.texture.view);
 
-        let config = SpriteSheetUniform {
-            config: [desc.grid_size.0 as f32, desc.grid_size.1 as f32, 0.0, 0.0],
-        };
+        let skydome_uniform = SkydomeUniform::new(desc.dome_radius, desc.dome_factor);
 
         let uniform_buffer =
             render_context
                 .device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Sprite Animation Buffer"),
-                    contents: bytemuck::cast_slice(&[config]),
+                    label: Some("Skydome Uniform Buffer"),
+                    contents: bytemuck::cast_slice(&[skydome_uniform]),
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 });
 
@@ -76,9 +73,7 @@ impl SpriteMaterialDefinition {
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: wgpu::BindingResource::Sampler(
-                            &render_context.common_nearest_sampler,
-                        ),
+                        resource: wgpu::BindingResource::Sampler(&render_context.common_sampler),
                     },
                     wgpu::BindGroupEntry {
                         binding: 2,
@@ -87,19 +82,18 @@ impl SpriteMaterialDefinition {
                         ),
                     },
                 ],
-                label: Some("Sprite material bind group"),
+                label: Some("Skybox material bind group"),
             });
 
-        SpriteMaterial {
+        SkydomeEnvironmentMaterial {
             texture,
-            config: Cell::new(config),
             uniform_buffer,
             bind_group,
         }
     }
 }
 
-impl SpriteMaterialDefinition {
+impl SkydomeMaterialDefinition {
     pub fn create_pipeline(
         environment: &PipelineVisitorEnvironment<'_>,
     ) -> Result<wgpu::RenderPipeline, anyhow::Error> {
@@ -127,20 +121,20 @@ impl SpriteMaterialDefinition {
                             visibility: wgpu::ShaderStages::FRAGMENT,
                             ty: wgpu::BindingType::Texture {
                                 multisampled: false,
-                                view_dimension: wgpu::TextureViewDimension::D2,
-                                sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                                view_dimension: wgpu::TextureViewDimension::Cube,
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
                             },
                             count: None,
                         },
                         wgpu::BindGroupLayoutEntry {
                             binding: 1,
                             visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                             count: None,
                         },
                         wgpu::BindGroupLayoutEntry {
                             binding: 2,
-                            visibility: wgpu::ShaderStages::VERTEX,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
                             ty: wgpu::BindingType::Buffer {
                                 ty: wgpu::BufferBindingType::Uniform,
                                 has_dynamic_offset: false,
@@ -149,7 +143,7 @@ impl SpriteMaterialDefinition {
                             count: None,
                         },
                     ],
-                    label: Some("Sprite material bind group layout"),
+                    label: Some("Skydome material bind group layout"),
                 });
 
         let pipeline_layout =
@@ -195,11 +189,10 @@ impl SpriteMaterialDefinition {
                         topology: wgpu::PrimitiveTopology::TriangleList,
                         ..Default::default()
                     },
-                    //depth_stencil: None,
                     depth_stencil: Some(wgpu::DepthStencilState {
                         format: DEFAULT_DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::Less,
+                        depth_write_enabled: false,
+                        depth_compare: wgpu::CompareFunction::LessEqual,
                         stencil: wgpu::StencilState::default(),
                         bias: wgpu::DepthBiasState::default(),
                     }),

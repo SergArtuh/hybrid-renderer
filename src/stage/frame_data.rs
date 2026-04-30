@@ -1,6 +1,7 @@
-use crate::core::camera::CameraUniform;
+use crate::assets::skydome::Skydome;
 use crate::core::material::Material;
 use crate::core::mesh::Mesh;
+use crate::core::uniforms::CameraUniform;
 use std::sync::Arc;
 
 pub enum RenderItem {
@@ -22,4 +23,5 @@ impl RenderItem {
 pub struct FrameData {
     pub camera_uniform: CameraUniform,
     pub render_items: Vec<RenderItem>,
+    pub skydome: Option<Skydome>,
 }

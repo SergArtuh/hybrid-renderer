@@ -1,5 +1,5 @@
-use crate::core::camera::CameraUniform;
 use crate::core::render_context::RenderContext;
+use crate::core::uniforms::CameraUniform;
 
 #[derive(Debug)]
 pub struct CameraManager {
