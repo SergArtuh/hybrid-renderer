@@ -98,7 +98,9 @@ pub fn run() {
         .unwrap();
 
     for model_node in &models.scene_roots {
-        let model = Model::new(Arc::clone(model_node), glam::Mat4::IDENTITY);
+        let mut model = Model::new(Arc::clone(model_node), glam::Mat4::IDENTITY);
+        model.transform = glam::Mat4::from_translation(glam::Vec3::new(0.0, 0.6, 0.0));
+
         stage.add_model(model);
     }
     let skydome = asset_manager

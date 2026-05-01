@@ -35,11 +35,7 @@ impl Stage {
         let mut render_items = Vec::new();
         for model in &self.models {
             let mut model_render_items = Vec::new();
-            Self::flatten_node(
-                &model.root_node,
-                &mut model_render_items,
-                glam::Mat4::IDENTITY,
-            );
+            Self::flatten_node(&model.root_node, &mut model_render_items, model.transform);
             render_items.extend(model_render_items);
         }
         FrameData {
