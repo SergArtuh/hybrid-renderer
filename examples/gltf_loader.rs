@@ -1,4 +1,5 @@
 use hybrid_renderer::assets::model::Model;
+use hybrid_renderer::input::camera_controller::FreeCameraController;
 use std::sync::Arc;
 use std::time::Instant;
 use winit::event::{Event, WindowEvent};
@@ -89,6 +90,8 @@ pub fn run() {
 
     let mut stage = Stage::new(camera);
 
+    let mut camera_controller = FreeCameraController::new(Default::default());
+
     let render_context = RenderContext::new(device, queue, surface, config);
     let mut renderer = Renderer::new(&render_context);
 
@@ -111,9 +114,36 @@ pub fn run() {
     stage.set_skydome(skydome);
 
     let mut last_time = Instant::now();
-    let mut frame_time = 0.0;
+    //let mut frame_time = 0.0;
     event_loop
         .run(move |event, elwt| match event {
+            winit::event::Event::WindowEvent {
+                event:
+                    WindowEvent::KeyboardInput {
+                        event: key_event, ..
+                    },
+                ..
+            } => {
+                camera_controller.process_keyboard(&key_event);
+            }
+            winit::event::Event::WindowEvent {
+                event: WindowEvent::MouseInput { button, state, .. },
+                ..
+            } => {
+                camera_controller.process_mouse_button(button, state);
+            }
+            winit::event::Event::DeviceEvent {
+                event: winit::event::DeviceEvent::MouseMotion { delta },
+                ..
+            } => {
+                camera_controller.process_mouse(delta.0, delta.1);
+            }
+            winit::event::Event::WindowEvent {
+                event: WindowEvent::MouseWheel { delta, .. },
+                ..
+            } => {
+                camera_controller.process_scroll(&delta);
+            }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 window_id,
@@ -125,13 +155,16 @@ pub fn run() {
                 let now = Instant::now();
                 let delta_time = now.duration_since(last_time);
                 last_time = now;
-                frame_time += delta_time.as_secs_f32();
+                //frame_time += delta_time.as_secs_f32();
 
-                let camera_x = f32::sin(frame_time) * CAMERA_DISTANCE;
-                let camera_z = f32::cos(frame_time) * CAMERA_DISTANCE;
+                // let camera_x = f32::sin(frame_time) * CAMERA_DISTANCE;
+                // let camera_z = f32::cos(frame_time) * CAMERA_DISTANCE;
 
-                stage.main_camera.position.x = camera_x;
-                stage.main_camera.position.z = camera_z;
+                // stage.main_camera.position.x = camera_x;
+                // stage.main_camera.position.z = camera_z;
+
+                camera_controller.update_camera(&mut stage.main_camera, delta_time);
+
                 let frame_data = stage.make_frame_data();
                 renderer.render(&render_context, &frame_data);
             }
