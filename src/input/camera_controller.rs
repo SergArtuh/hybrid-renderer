@@ -5,6 +5,135 @@ use winit::event::{ElementState, KeyEvent, MouseScrollDelta};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 #[derive(Debug, Clone, Copy)]
+pub struct OrbitCameraControllerDescriptor {
+    pub target: Vec3,
+    pub distance: f32,
+    pub sensitivity: f32,
+    pub scroll_speed: f32,
+    pub move_speed: f32,
+    pub min_distance: f32,
+    pub max_distance: f32,
+    pub min_pitch: f32,
+    pub max_pitch: f32,
+    pub start_yaw: f32,
+    pub start_pitch: f32,
+}
+
+impl Default for OrbitCameraControllerDescriptor {
+    fn default() -> Self {
+        Self {
+            target: Vec3::ZERO,
+            distance: 10.0,
+            sensitivity: 2.0,
+            scroll_speed: 5.0,
+            move_speed: 5.0,
+            min_distance: 0.1,
+            max_distance: 100.0,
+            min_pitch: -FRAC_PI_2 + 0.1,
+            max_pitch: FRAC_PI_2 - 0.1,
+            start_yaw: -FRAC_PI_2,
+            start_pitch: 0.4,
+        }
+    }
+}
+
+pub struct OrbitCameraController {
+    pub sensitivity: f32,
+    pub scroll_speed: f32,
+    pub min_distance: f32,
+    pub max_distance: f32,
+    pub min_pitch: f32,
+    pub max_pitch: f32,
+
+    target: Vec3,
+    distance: f32,
+    yaw: f32,
+    pitch: f32,
+
+    rotate_horizontal: f32,
+    rotate_vertical: f32,
+    scroll: f32,
+    is_mouse_pressed: bool,
+}
+
+impl OrbitCameraController {
+    pub fn new(desc: OrbitCameraControllerDescriptor) -> Self {
+        Self {
+            sensitivity: desc.sensitivity,
+            scroll_speed: desc.scroll_speed,
+            min_distance: desc.min_distance,
+            max_distance: desc.max_distance,
+            min_pitch: desc.min_pitch,
+            max_pitch: desc.max_pitch,
+            target: desc.target,
+            distance: desc.distance,
+            yaw: desc.start_yaw,
+            pitch: desc.start_pitch,
+            rotate_horizontal: 0.0,
+            rotate_vertical: 0.0,
+            scroll: 0.0,
+            is_mouse_pressed: false,
+        }
+    }
+
+    pub fn process_keyboard(&mut self, _event: &KeyEvent) -> bool {
+        true // no- op
+    }
+
+    pub fn process_mouse_button(&mut self, button: winit::event::MouseButton, state: ElementState) {
+        if button == winit::event::MouseButton::Left {
+            self.is_mouse_pressed = state == ElementState::Pressed;
+        }
+    }
+
+    pub fn process_mouse(&mut self, mouse_dx: f64, mouse_dy: f64) {
+        if self.is_mouse_pressed {
+            self.rotate_horizontal = mouse_dx as f32;
+            self.rotate_vertical = mouse_dy as f32;
+        }
+    }
+
+    pub fn process_scroll(&mut self, delta: &MouseScrollDelta) {
+        self.scroll = match delta {
+            MouseScrollDelta::LineDelta(_, scroll) => -scroll,
+            MouseScrollDelta::PixelDelta(pos) => -pos.y as f32 * 0.01,
+        };
+    }
+
+    pub fn update_camera(&mut self, camera: &mut Camera, dt: std::time::Duration) {
+        let dt = dt.as_secs_f32();
+
+        self.yaw += self.rotate_horizontal * self.sensitivity * dt;
+        self.pitch += self.rotate_vertical * self.sensitivity * dt;
+
+        self.rotate_horizontal = 0.0;
+        self.rotate_vertical = 0.0;
+
+        self.pitch = self.pitch.clamp(self.min_pitch, self.max_pitch);
+
+        let zoom_delta = self.scroll * self.scroll_speed * dt * self.distance.max(1.0);
+        self.distance = (self.distance + zoom_delta).clamp(self.min_distance, self.max_distance);
+        self.scroll = 0.0;
+
+        let (sin_pitch, cos_pitch) = self.pitch.sin_cos();
+        let (sin_yaw, cos_yaw) = self.yaw.sin_cos();
+
+        let offset = Vec3::new(
+            self.distance * cos_pitch * cos_yaw,
+            self.distance * sin_pitch,
+            self.distance * cos_pitch * sin_yaw,
+        );
+
+        camera.position = self.target + offset;
+        camera.target = self.target;
+    }
+
+    pub fn set_target(&mut self, target: Vec3) {
+        self.target = target;
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct FreeCameraControllerDescriptor {
     pub speed: f32,
     pub sensitivity: f32,

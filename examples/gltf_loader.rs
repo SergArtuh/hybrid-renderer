@@ -1,5 +1,7 @@
 use hybrid_renderer::assets::model::Model;
-use hybrid_renderer::input::camera_controller::FreeCameraController;
+use hybrid_renderer::input::camera_controller::{
+    OrbitCameraController, OrbitCameraControllerDescriptor,
+};
 use std::sync::Arc;
 use std::time::Instant;
 use winit::event::{Event, WindowEvent};
@@ -82,7 +84,7 @@ pub fn run() {
     surface.configure(&device, &config);
 
     let camera = Camera::new(Vec3::new(0.0, 1., CAMERA_DISTANCE))
-        .with_target(Vec3::new(0.0, 0.0, 0.0))
+        .with_target(Vec3::ZERO)
         .with_fov(60.0)
         .with_near(0.1)
         .with_far(1000.0)
@@ -90,7 +92,14 @@ pub fn run() {
 
     let mut stage = Stage::new(camera);
 
-    let mut camera_controller = FreeCameraController::new(Default::default());
+    // let mut camera_controller = FreeCameraController::new(Default::default());
+    let mut camera_controller = OrbitCameraController::new(OrbitCameraControllerDescriptor {
+        target: Vec3::ZERO,
+        distance: CAMERA_DISTANCE,
+        start_pitch: 0.15,
+        start_yaw: 2.0 * std::f32::consts::PI / 3.0,
+        ..Default::default()
+    });
 
     let render_context = RenderContext::new(device, queue, surface, config);
     let mut renderer = Renderer::new(&render_context);
