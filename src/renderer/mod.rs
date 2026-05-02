@@ -7,10 +7,9 @@ use crate::{
         render_context::RenderContext,
     },
     renderer::{
-        camera_manager::CameraManager,
         compute_task::{ComputeTaskFactory, equirect_to_cubemap::EquirectToCubemapTask},
         frame_target::FrameTarget,
-        layout_interface::LayoutInterface,
+        layout_interface::{GlobalResources, LayoutInterface},
         materials::{MaterialFactory, skydome_material::SkydomeMaterialDefinition},
         model_manager::ModelManager,
         pipeline_manager::PipelineManager,
@@ -18,7 +17,6 @@ use crate::{
     stage::frame_data::FrameData,
 };
 
-pub mod camera_manager;
 pub mod compute_task;
 pub mod frame_target;
 pub mod layout_interface;
@@ -32,10 +30,10 @@ use passes::forward::ForwardPass;
 
 pub struct Renderer {
     forward_pass: ForwardPass,
-    camera_manager: CameraManager,
     model_manager: ModelManager,
     pipeline_manager: PipelineManager,
     pub layout_interface: Arc<RefCell<LayoutInterface>>,
+    global_resources: GlobalResources,
     depth_texture_view: wgpu::TextureView,
 }
 
@@ -46,7 +44,8 @@ impl Renderer {
             .push_error_scope(wgpu::ErrorFilter::Validation);
 
         let layout_interface = Arc::new(RefCell::new(LayoutInterface::new(render_context)));
-        let camera_manager = CameraManager::new(render_context, &layout_interface.borrow().global);
+        let global_resources =
+            GlobalResources::new(render_context, &layout_interface.borrow().global);
         let model_manager = ModelManager::new(render_context, &layout_interface.borrow().model);
         let depth_texture_view = Self::create_depth_texture(render_context);
 
@@ -79,7 +78,7 @@ impl Renderer {
 
         Self {
             forward_pass,
-            camera_manager,
+            global_resources,
             model_manager,
             pipeline_manager,
             layout_interface,
@@ -93,8 +92,8 @@ impl Renderer {
 
         let mut frame_target = self.begin_frame(render_context);
 
-        self.camera_manager
-            .update_buffer(render_context, &frame_data.camera_uniform);
+        self.global_resources
+            .update_camera_uniform_buffer(render_context, &frame_data.camera_uniform);
 
         self.model_manager
             .update_buffer(render_context, &frame_data.render_items);
@@ -106,7 +105,7 @@ impl Renderer {
             self.forward_pass.execute(
                 &mut render_pass,
                 &self.pipeline_manager,
-                &self.camera_manager,
+                &self.global_resources,
                 &self.model_manager,
                 frame_data,
             );

@@ -2,7 +2,7 @@ use wgpu::DynamicOffset;
 
 use crate::{
     renderer::{
-        camera_manager::CameraManager, model_manager::ModelManager,
+        layout_interface::GlobalResources, model_manager::ModelManager,
         pipeline_manager::PipelineManager,
     },
     stage::frame_data::{FrameData, RenderItem},
@@ -20,7 +20,7 @@ impl ForwardPass {
         &'a self,
         rpass: &mut wgpu::RenderPass<'a>,
         pipeline_manager: &'a PipelineManager,
-        camera_manager: &'a CameraManager,
+        global_resources: &'a GlobalResources,
         model_manager: &'a ModelManager,
         frame_data: &'a FrameData,
     ) {
@@ -40,7 +40,7 @@ impl ForwardPass {
                         rpass.set_pipeline(&pipeline);
                         rpass.set_vertex_buffer(0, vertex_buffer.slice(..));
                         rpass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                        rpass.set_bind_group(0, &camera_manager.bind_group, &[]);
+                        rpass.set_bind_group(0, &global_resources.bind_group, &[]);
                         rpass.set_bind_group(1, &model_manager.bind_group, &[offset]);
                         rpass.set_bind_group(2, &material.bind_group(), &[]);
 
@@ -49,7 +49,7 @@ impl ForwardPass {
                     (None, None) => {
                         let pipeline = pipeline_manager.get_pipeline(&material);
                         rpass.set_pipeline(&pipeline);
-                        rpass.set_bind_group(0, &camera_manager.bind_group, &[]);
+                        rpass.set_bind_group(0, &global_resources.bind_group, &[]);
                         rpass.set_bind_group(1, &model_manager.bind_group, &[0u32]);
                         rpass.set_bind_group(2, &material.bind_group(), &[]);
 
@@ -63,7 +63,7 @@ impl ForwardPass {
         if let Some(skydome) = &frame_data.skydome {
             let pipeline = pipeline_manager.get_pipeline(&skydome.material);
             rpass.set_pipeline(&pipeline);
-            rpass.set_bind_group(0, &camera_manager.bind_group, &[]);
+            rpass.set_bind_group(0, &global_resources.bind_group, &[]);
             rpass.set_bind_group(1, &model_manager.bind_group, &[0u32]);
             rpass.set_bind_group(2, &skydome.material.bind_group(), &[]);
 
