@@ -2,7 +2,7 @@ use wgpu::DynamicOffset;
 
 use crate::{
     renderer::{
-        layout_interface::GlobalResources, model_manager::ModelManager,
+        layout_interface::{GlobalResources, ModelResources},
         pipeline_manager::PipelineManager,
     },
     stage::frame_data::{FrameData, RenderItem},
@@ -21,10 +21,10 @@ impl ForwardPass {
         rpass: &mut wgpu::RenderPass<'a>,
         pipeline_manager: &'a PipelineManager,
         global_resources: &'a GlobalResources,
-        model_manager: &'a ModelManager,
+        model_resources: &'a ModelResources,
         frame_data: &'a FrameData,
     ) {
-        let stride = model_manager.stride as DynamicOffset;
+        let stride = model_resources.stride as DynamicOffset;
         for (i, renderable) in frame_data.render_items.iter().enumerate() {
             match renderable {
                 RenderItem::StaticMesh {
@@ -41,7 +41,7 @@ impl ForwardPass {
                         rpass.set_vertex_buffer(0, vertex_buffer.slice(..));
                         rpass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                         rpass.set_bind_group(0, &global_resources.bind_group, &[]);
-                        rpass.set_bind_group(1, &model_manager.bind_group, &[offset]);
+                        rpass.set_bind_group(1, &model_resources.bind_group, &[offset]);
                         rpass.set_bind_group(2, &material.bind_group(), &[]);
 
                         rpass.draw_indexed(0..mesh.index_count, 0, 0..1);
@@ -50,7 +50,7 @@ impl ForwardPass {
                         let pipeline = pipeline_manager.get_pipeline(&material);
                         rpass.set_pipeline(&pipeline);
                         rpass.set_bind_group(0, &global_resources.bind_group, &[]);
-                        rpass.set_bind_group(1, &model_manager.bind_group, &[0u32]);
+                        rpass.set_bind_group(1, &model_resources.bind_group, &[0u32]);
                         rpass.set_bind_group(2, &material.bind_group(), &[]);
 
                         rpass.draw(0..mesh.index_count, 0..1);
@@ -64,7 +64,7 @@ impl ForwardPass {
             let pipeline = pipeline_manager.get_pipeline(&skydome.material);
             rpass.set_pipeline(&pipeline);
             rpass.set_bind_group(0, &global_resources.bind_group, &[]);
-            rpass.set_bind_group(1, &model_manager.bind_group, &[0u32]);
+            rpass.set_bind_group(1, &model_resources.bind_group, &[0u32]);
             rpass.set_bind_group(2, &skydome.material.bind_group(), &[]);
 
             match (&skydome.mesh.vertex_buffer, &skydome.mesh.index_buffer) {
