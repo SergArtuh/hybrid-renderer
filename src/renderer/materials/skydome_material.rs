@@ -49,8 +49,6 @@ impl SkydomeMaterialDefinition {
         desc: SkydomeMaterialDescriptor,
         layout: &wgpu::BindGroupLayout,
     ) -> SkydomeEnvironmentMaterial {
-        let texture = Arc::clone(&desc.texture.view);
-
         let skydome_uniform = SkydomeUniform::new(desc.dome_radius, desc.dome_factor);
 
         let uniform_buffer =
@@ -66,27 +64,17 @@ impl SkydomeMaterialDefinition {
             .device
             .create_bind_group(&wgpu::BindGroupDescriptor {
                 layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&texture),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&render_context.common_sampler),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::Buffer(
-                            uniform_buffer.as_entire_buffer_binding(),
-                        ),
-                    },
-                ],
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Buffer(
+                        uniform_buffer.as_entire_buffer_binding(),
+                    ),
+                }],
                 label: Some("Skybox material bind group"),
             });
 
         SkydomeEnvironmentMaterial {
-            texture,
+            cubemap_texture: Arc::clone(&desc.texture.view),
             uniform_buffer,
             bind_group,
         }
@@ -115,34 +103,16 @@ impl SkydomeMaterialDefinition {
             render_context
                 .device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    entries: &[
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Texture {
-                                multisampled: false,
-                                view_dimension: wgpu::TextureViewDimension::Cube,
-                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            },
-                            count: None,
+                    entries: &[wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
                         },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 1,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 2,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Uniform,
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                    ],
+                        count: None,
+                    }],
                     label: Some("Skydome material bind group layout"),
                 });
 

@@ -7,6 +7,7 @@ pub struct DefaultTextures {
     pub black: Arc<wgpu::TextureView>,
     pub normal: Arc<wgpu::TextureView>,
     pub black_metallic: Arc<wgpu::TextureView>,
+    pub cubemap: Arc<Texture>,
 }
 
 impl DefaultTextures {
@@ -39,11 +40,19 @@ impl DefaultTextures {
             .from_image(create_color_img(00, 255, 0, 255))
             .build();
 
+        let cubemap = TextureBuilder::new(device, queue)
+            .with_label("cubemap_fallback")
+            .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+            .with_size(1, 1)
+            .as_cubemap()
+            .build();
+
         Self {
             white: Arc::clone(&white.view),
             black: Arc::clone(&black.view),
             normal: Arc::clone(&normal.view),
             black_metallic: Arc::clone(&black_metallic.view),
+            cubemap: Arc::new(cubemap),
         }
     }
 }

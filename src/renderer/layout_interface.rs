@@ -23,16 +23,34 @@ impl LayoutInterface {
             render_context
                 .device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    entries: &[wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Uniform,
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
                         },
-                        count: None,
-                    }],
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                multisampled: false,
+                                view_dimension: wgpu::TextureViewDimension::Cube,
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 2,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                            count: None,
+                        },
+                    ],
                     label: Some("global_bind_group_layout"),
                 });
 
@@ -68,8 +86,8 @@ impl LayoutInterface {
 
 pub struct GlobalResources {
     pub camera_uniform_buffer: wgpu::Buffer,
-    //pub skybox_texture: wgpu::TextureView,
-    //pub skybox_sampler: wgpu::Sampler,
+    pub skybox_texture: Arc<wgpu::TextureView>,
+    //pub skybox_sampler: Arc<wgpu::Sampler>,
     pub bind_group: wgpu::BindGroup,
 }
 
@@ -84,14 +102,20 @@ impl GlobalResources {
                 mapped_at_creation: false,
             });
 
+        let skybox_texture = Arc::clone(&render_context.default_textures.cubemap.view);
+
         let bind_group = Self::create_global_bind_group(
             render_context,
             bind_group_layout,
             &camera_uniform_buffer,
+            &skybox_texture,
+            &render_context.common_sampler,
         );
 
         Self {
             camera_uniform_buffer,
+            skybox_texture,
+            // skybox_sampler,
             bind_group,
         }
     }
@@ -108,17 +132,41 @@ impl GlobalResources {
         );
     }
 
+    pub fn update_skybox_texture(
+        &mut self,
+        render_context: &RenderContext,
+        bind_group_layout: &wgpu::BindGroupLayout,
+        skybox_texture: Arc<wgpu::TextureView>,
+    ) {
+        if Arc::ptr_eq(&self.skybox_texture, &skybox_texture) {
+            return;
+        }
+
+        self.skybox_texture = Arc::clone(&skybox_texture);
+        self.bind_group = Self::create_global_bind_group(
+            render_context,
+            bind_group_layout,
+            &self.camera_uniform_buffer,
+            &self.skybox_texture,
+            &render_context.common_sampler,
+        );
+    }
+
     fn create_global_bind_group(
         render_context: &RenderContext,
         bind_group_layout: &wgpu::BindGroupLayout,
         camera_uniform_buffer: &wgpu::Buffer,
+        skybox_texture: &wgpu::TextureView,
+        skybox_sampler: &wgpu::Sampler,
     ) -> wgpu::BindGroup {
-        let camera_entries = Self::get_camera_entries(camera_uniform_buffer);
+        let mut entries = Self::get_camera_entries(camera_uniform_buffer);
+        entries.extend(Self::get_skydome_entries(&skybox_texture, &skybox_sampler));
+
         render_context
             .device
             .create_bind_group(&wgpu::BindGroupDescriptor {
                 layout: bind_group_layout,
-                entries: &camera_entries,
+                entries: &entries,
                 label: Some("global_bind_group"),
             })
     }
@@ -132,6 +180,21 @@ impl GlobalResources {
                 camera_uniform_buffer.as_entire_buffer_binding(),
             ),
         }]
+    }
+    fn get_skydome_entries<'a>(
+        texture: &'a wgpu::TextureView,
+        sampler: &'a wgpu::Sampler,
+    ) -> Vec<wgpu::BindGroupEntry<'a>> {
+        vec![
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(&texture),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Sampler(sampler),
+            },
+        ]
     }
 }
 pub struct ModelResources {

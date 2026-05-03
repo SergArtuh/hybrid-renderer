@@ -87,7 +87,7 @@ pub struct PhysicalMaterial {
 }
 
 pub struct SkydomeEnvironmentMaterial {
-    pub texture: Arc<wgpu::TextureView>,
+    pub cubemap_texture: Arc<wgpu::TextureView>,
     pub uniform_buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
 }

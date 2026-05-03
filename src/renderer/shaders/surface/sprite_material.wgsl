@@ -28,6 +28,9 @@ struct SpriteSheet {
 };
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
+@group(0) @binding(1) var t_cubemap: texture_cube<f32>;
+@group(0) @binding(2) var env_sampler: sampler;
+
 @group(1) @binding(0) var<uniform> model: ModelUniform;
 
 @group(2) @binding(0) var t_texture: texture_2d<f32>;

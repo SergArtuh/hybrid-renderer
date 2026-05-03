@@ -14,8 +14,8 @@ struct SkydomeUniform {
 }
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
-@group(2) @binding(0) var t_cubemap: texture_cube<f32>;
-@group(2) @binding(1) var s_texture: sampler;
+@group(0) @binding(1) var t_cubemap: texture_cube<f32>;
+@group(0) @binding(2) var s_texture: sampler;
 @group(2) @binding(2) var<uniform> skydome_uniform: SkydomeUniform;
 
 

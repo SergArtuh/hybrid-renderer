@@ -25,3 +25,12 @@ pub struct FrameData {
     pub render_items: Vec<RenderItem>,
     pub skydome: Option<Skydome>,
 }
+
+impl FrameData {
+    pub fn get_environment_texture(&self) -> Option<Arc<wgpu::TextureView>> {
+        match self.skydome.as_ref()?.material.as_ref() {
+            Material::Skydome(m) => Some(Arc::clone(&m.cubemap_texture)),
+            _ => None,
+        }
+    }
+}

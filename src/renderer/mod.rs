@@ -85,16 +85,7 @@ impl Renderer {
     }
 
     pub fn render(&mut self, render_context: &RenderContext, frame_data: &FrameData) {
-        self.pipeline_manager
-            .check_shader_updates(render_context, Arc::clone(&self.layout_interface));
-
-        let mut frame_target = self.begin_frame(render_context);
-
-        self.global_resources
-            .update_camera_uniform_buffer(render_context, &frame_data.camera_uniform);
-
-        self.model_resources
-            .update_buffer(render_context, &frame_data.render_items);
+        let mut frame_target = self.begin_frame(render_context, frame_data);
 
         {
             let mut render_pass =
@@ -136,7 +127,11 @@ impl Renderer {
         AssetManager::new(render_context, material_factory, compute_task_factory)
     }
 
-    fn begin_frame(&self, render_context: &RenderContext) -> FrameTarget {
+    fn begin_frame(
+        &mut self,
+        render_context: &RenderContext,
+        frame_data: &FrameData,
+    ) -> FrameTarget {
         let surface_texture = match render_context.surface.get_current_texture() {
             Ok(output) => output,
             Err(e) => {
@@ -155,6 +150,25 @@ impl Renderer {
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label: Some("Render Encoder"),
                 });
+
+        self.pipeline_manager
+            .check_shader_updates(render_context, Arc::clone(&self.layout_interface));
+
+        self.global_resources
+            .update_camera_uniform_buffer(render_context, &frame_data.camera_uniform);
+
+        frame_data
+            .get_environment_texture()
+            .map(|environment_texture| {
+                self.global_resources.update_skybox_texture(
+                    render_context,
+                    &self.layout_interface.borrow().global,
+                    environment_texture,
+                )
+            });
+
+        self.model_resources
+            .update_buffer(render_context, &frame_data.render_items);
 
         FrameTarget {
             surface_texture,
