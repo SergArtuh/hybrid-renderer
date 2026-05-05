@@ -2,8 +2,10 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     core::{
-        compute_task::ComputeTaskType, material::MaterialType, render_context::RenderContext,
-        uniforms::CameraUniform,
+        compute_task::ComputeTaskType,
+        material::MaterialType,
+        render_context::RenderContext,
+        uniforms::{CameraUniform, ModelUniform},
     },
     stage::frame_data::RenderItem,
 };
@@ -64,7 +66,9 @@ impl LayoutInterface {
                         ty: wgpu::BindingType::Buffer {
                             ty: wgpu::BufferBindingType::Uniform,
                             has_dynamic_offset: true,
-                            min_binding_size: wgpu::BufferSize::new(64),
+                            min_binding_size: wgpu::BufferSize::new(
+                                std::mem::size_of::<ModelUniform>() as _,
+                            ),
                             // has_dynamic_offset: false,
                             // min_binding_size: None,
                         },
@@ -206,18 +210,14 @@ pub struct ModelResources {
 impl ModelResources {
     const MAX_MODELS: u64 = 100;
     pub fn new(render_context: &RenderContext, bind_group_layout: &wgpu::BindGroupLayout) -> Self {
-        let matrix_size = std::mem::size_of::<glam::Mat4>() as wgpu::BufferAddress;
-        let alignment = render_context
-            .device
-            .limits()
-            .min_uniform_buffer_offset_alignment as wgpu::BufferAddress;
-        let dynamic_offset_step = (matrix_size + alignment - 1) & !(alignment - 1);
+        let stride = Self::calculate_stride(render_context);
+        let uniform_size = std::mem::size_of::<ModelUniform>() as wgpu::BufferAddress;
 
         let buffer = render_context
             .device
             .create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Global Model Matrix Buffer"),
-                size: dynamic_offset_step * Self::MAX_MODELS,
+                label: Some("Model Uniform Buffer"),
+                size: stride * Self::MAX_MODELS,
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
@@ -231,13 +231,11 @@ impl ModelResources {
                     resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                         buffer: &buffer,
                         offset: 0,
-                        size: wgpu::BufferSize::new(matrix_size),
+                        size: wgpu::BufferSize::new(uniform_size),
                     }),
                 }],
                 label: Some("model_bind_group"),
             });
-
-        let stride = Self::calculate_stride(render_context);
 
         Self {
             buffer,
@@ -245,29 +243,43 @@ impl ModelResources {
             stride,
         }
     }
-    pub fn update_buffer(&self, render_context: &RenderContext, items: &[RenderItem]) {
-        let matrix_size = std::mem::size_of::<glam::Mat4>();
 
+    pub fn update_buffer(&self, render_context: &RenderContext, items: &[RenderItem]) {
         let mut data = Vec::with_capacity(items.len() * self.stride as usize);
 
         for item in items {
-            let matrix = item.world_matrix();
-            let bytes = bytemuck::cast_slice(matrix.as_ref());
+            let model_uniform = Self::make_model_uniform(item.world_matrix().clone());
+            let bytes = bytemuck::bytes_of(&model_uniform);
             data.extend_from_slice(bytes);
-            let padding = self.stride as usize - matrix_size;
-            data.extend(std::iter::repeat(0).take(padding));
+
+            let padding = self.stride as usize - std::mem::size_of::<ModelUniform>();
+            if padding > 0 {
+                data.extend(std::iter::repeat(0).take(padding));
+            }
         }
 
         render_context.queue.write_buffer(&self.buffer, 0, &data);
     }
 
     fn calculate_stride(render_context: &RenderContext) -> wgpu::BufferAddress {
-        let matrix_size = std::mem::size_of::<glam::Mat4>();
+        let struct_size = std::mem::size_of::<ModelUniform>();
+
         let alignment = render_context
             .device
             .limits()
             .min_uniform_buffer_offset_alignment as usize;
-        let stride: usize = (matrix_size + alignment - 1) & !(alignment - 1);
+
+        let stride = (struct_size + alignment - 1) & !(alignment - 1);
+
         stride as wgpu::BufferAddress
+    }
+
+    fn make_model_uniform(model_matrix: glam::Mat4) -> ModelUniform {
+        let normal_matrix = model_matrix.clone().inverse().transpose();
+
+        ModelUniform {
+            model_matrix,
+            normal_matrix,
+        }
     }
 }

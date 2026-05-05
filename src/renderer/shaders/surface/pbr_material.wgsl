@@ -8,6 +8,7 @@ struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0)  normal: vec3<f32>,
     @location(1)  uv: vec2<f32>,
+    @location(2) world_position: vec3<f32>,
 };
 
 struct CameraUniform {
@@ -18,10 +19,11 @@ struct CameraUniform {
 
 struct ModelUniform {
     model_matrix: mat4x4<f32>,
+    normal_matrix: mat4x4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
-@group(0) @binding(1) var t_cubemap: texture_cube<f32>;
+@group(0) @binding(1) var env_cubemap: texture_cube<f32>;
 @group(0) @binding(2) var s_texture: sampler;
 
 @group(1) @binding(0) var<uniform> model: ModelUniform;
@@ -41,8 +43,16 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
     //out.clip_position = camera.proj_view * (model.model_matrix * vec4<f32>(vertex.position, 1.0) +  vec4<f32>(0.0, 0.6, 0.0, 0.0));
-    out.clip_position = camera.proj_view * model.model_matrix * vec4<f32>(vertex.position, 1.0);
-    out.normal = vertex.normal;
+    //out.clip_position = camera.proj_view * model.model_matrix * vec4<f32>(vertex.position, 1.0);
+
+    let world_pos = model.model_matrix * vec4<f32>(vertex.position, 1.0);
+    
+    out.world_position = world_pos.xyz;
+
+    out.clip_position = camera.proj_view * world_pos;
+
+    
+    out.normal = normalize((model.normal_matrix * vec4<f32>(vertex.normal, 0.0)).xyz);
     out.uv = vertex.uv;
     return out;
 }
@@ -58,8 +68,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let orm = textureSample(t_metallic_roughness, common_sampler, in.uv);
     let roughness = orm.g;
     let metallic = orm.b;
+
+    let view_dir = normalize(in.world_position - camera.position.xyz);
+    let reflect_dir = reflect(view_dir, normalize(in.normal));
     
-    return base_color;
+    let hdr_color = textureSample(env_cubemap, s_texture, reflect_dir);
+    let color = hdr_color.rgb / (hdr_color.rgb + vec3(1.0));
+    return vec4<f32>(color, 1.0);
     //return vec4<f32>(in.clip_position.xyz / in.clip_position.w, 1.0);
     //return vec4<f32>(roughness, roughness, roughness, 1.0);
     //return vec4<f32>(metallic, metallic, metallic, 1.0);

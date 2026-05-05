@@ -10,6 +10,13 @@ pub struct CameraUniform {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ModelUniform {
+    pub model_matrix: Mat4,
+    pub normal_matrix: Mat4,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct SkydomeUniform {
     // [radius, dome_factor, 0.0, 0.0]
     pub data: [f32; 4],
