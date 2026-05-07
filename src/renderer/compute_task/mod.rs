@@ -42,25 +42,34 @@ impl<'a> ComputeTaskFactory<'a> {
     }
 
     pub fn create_executor(&self) -> ComputeExecutor<'_> {
-        ComputeExecutor {
-            pipeline_manager: &self.pipeline_manager,
-        }
+        ComputeExecutor::new(self.pipeline_manager, self.render_context)
     }
 }
 
 pub struct ComputeExecutor<'a> {
     pipeline_manager: &'a PipelineManager,
+    encoder: Option<wgpu::CommandEncoder>,
 }
 
 impl<'a> ComputeExecutor<'a> {
-    pub fn new(pipeline_manager: &'a PipelineManager) -> Self {
-        Self { pipeline_manager }
+    pub fn new(pipeline_manager: &'a PipelineManager, _render_context: &RenderContext) -> Self {
+        Self {
+            pipeline_manager,
+            encoder: None,
+        }
     }
 
-    pub fn record(&self, encoder: &mut wgpu::CommandEncoder, task_instance: &ComputeTaskInstance) {
+    pub fn record(
+        &mut self,
+        render_context: &RenderContext,
+        task_instance: &ComputeTaskInstance,
+    ) -> &mut Self {
         let pipeline = self
             .pipeline_manager
             .get_compute_pipeline(task_instance.task_type);
+
+        let encoder = self.get_or_create_encoder(render_context);
+        {
         let mut cpass = encoder.begin_compute_pass(&Default::default());
         cpass.set_pipeline(pipeline);
         cpass.set_bind_group(0, &task_instance.bind_group, &[]);
@@ -71,18 +80,33 @@ impl<'a> ComputeExecutor<'a> {
         );
     }
 
-    pub fn execute_immediate(
-        &self,
-        render_context: &RenderContext,
-        instance: &ComputeTaskInstance,
-    ) {
-        let mut encoder = render_context
-            .device
-            .create_command_encoder(&Default::default());
-        self.record(&mut encoder, instance);
+        self
+    }
+
+    pub fn execute(&mut self, render_context: &RenderContext) -> &mut Self {
+        if let Some(encoder) = self.encoder.take() {
         render_context
             .queue
             .submit(std::iter::once(encoder.finish()));
+        }
+        self
+    }
+
+    pub fn wait(&self, render_context: &RenderContext) {
         render_context.device.poll(wgpu::Maintain::Wait);
+    }
+
+    fn get_or_create_encoder(
+        &mut self,
+        render_context: &RenderContext,
+    ) -> &mut wgpu::CommandEncoder {
+        if self.encoder.is_none() {
+            self.encoder = Some(
+                render_context
+                    .device
+                    .create_command_encoder(&Default::default()),
+            );
+        }
+        self.encoder.as_mut().unwrap()
     }
 }

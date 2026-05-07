@@ -112,9 +112,13 @@ impl<'ctx> AssetManager<'ctx> {
                 output_cubemap: Arc::clone(&cubemap_texture),
             });
 
-        self.compute_task_factory
-            .create_executor()
-            .execute_immediate(&self.ctx, &compute_task);
+
+
+        let mut executor = self.compute_task_factory.create_executor();
+        executor
+            .record(&self.ctx, &compute_task)
+            .execute(&self.ctx)
+            .wait(&self.ctx);
 
         let material = self
             .material_factory
