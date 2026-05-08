@@ -7,7 +7,9 @@ use crate::{
         render_context::RenderContext,
     },
     renderer::{
-        compute_task::{ComputeTaskFactory, equirect_to_cubemap::EquirectToCubemapTask},
+        compute_task::{
+            ClearCubemapTask, ComputeTaskFactory, DiffuseIrradianceTask, EquirectToCubemapTask,
+        },
         frame_target::FrameTarget,
         layout_interface::{GlobalResources, LayoutInterface, ModelResources},
         materials::{MaterialFactory, skydome_material::SkydomeMaterialDefinition},
@@ -68,6 +70,16 @@ impl Renderer {
         );
 
         pipeline_manager.register_compute_pipeline::<EquirectToCubemapTask>(
+            render_context,
+            Arc::clone(&layout_interface),
+        );
+
+        pipeline_manager.register_compute_pipeline::<ClearCubemapTask>(
+            render_context,
+            Arc::clone(&layout_interface),
+        );
+
+        pipeline_manager.register_compute_pipeline::<DiffuseIrradianceTask>(
             render_context,
             Arc::clone(&layout_interface),
         );

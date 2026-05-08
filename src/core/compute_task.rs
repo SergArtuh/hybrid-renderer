@@ -3,6 +3,8 @@ use crate::core::render_context::RenderContext;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ComputeTaskType {
     EquirectToCubemap,
+    ClearCubemap,
+    DiffuseIrradiance,
 }
 
 pub struct ComputeTaskInstance {

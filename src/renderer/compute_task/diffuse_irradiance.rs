@@ -5,8 +5,12 @@ use crate::core::{
     render_context::RenderContext,
     texture::Texture,
 };
+
+const TASK_TYPE: ComputeTaskType = ComputeTaskType::DiffuseIrradiance;
+const SHADER_PATH: &str = "diffuse_irradiance.wgsl";
+
 pub struct TaskDescriptor {
-    pub input_texture: Arc<Texture>,
+    pub input_cubemap: Arc<Texture>,
     pub output_cubemap: Arc<Texture>,
 }
 pub struct Task {
@@ -15,10 +19,10 @@ pub struct Task {
 }
 
 impl ComputeTaskTrait for Task {
-    const TYPE: ComputeTaskType = ComputeTaskType::EquirectToCubemap;
+    const TYPE: ComputeTaskType = TASK_TYPE;
 
     fn get_shader_path() -> &'static str {
-        "equirect_to_cubemap.wgsl"
+        SHADER_PATH
     }
 
     fn get_bind_group_layout_entries() -> Vec<wgpu::BindGroupLayoutEntry> {
@@ -27,9 +31,9 @@ impl ComputeTaskTrait for Task {
                 binding: 0,
                 visibility: wgpu::ShaderStages::COMPUTE,
                 ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    view_dimension: wgpu::TextureViewDimension::D2,
                     multisampled: false,
+                    view_dimension: wgpu::TextureViewDimension::Cube,
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
                 },
                 count: None,
             },
@@ -57,11 +61,11 @@ impl ComputeTaskTrait for Task {
         desc: Self::Descriptor,
         layout: &wgpu::BindGroupLayout,
     ) -> Result<ComputeTaskInstance, anyhow::Error> {
-        let cubemap_view = desc
+        let cubemap_output_view = desc
             .output_cubemap
             .array_view
             .as_ref()
-            .expect("Cubemap array view should be present");
+            .expect("Output view missing");
 
         let bind_group = render_context
             .device
@@ -70,11 +74,11 @@ impl ComputeTaskTrait for Task {
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&desc.input_texture.view),
+                        resource: wgpu::BindingResource::TextureView(&desc.input_cubemap.view),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&cubemap_view),
+                        resource: wgpu::BindingResource::TextureView(&cubemap_output_view),
                     },
                     wgpu::BindGroupEntry {
                         binding: 2,

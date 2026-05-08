@@ -5,9 +5,9 @@ use crate::core::model_node::ModelNode;
 use crate::core::render_context::RenderContext;
 use crate::core::texture::Texture;
 use crate::core::texture_builder::{ComponentPrecision, TextureBuilder, TextureChannels};
-use crate::renderer::compute_task::ComputeTaskFactory;
-use crate::renderer::compute_task::equirect_to_cubemap::{
-    EquirectToCubemapTask, EquirectToCubemapTaskDescriptor,
+use crate::renderer::compute_task::{
+    ClearCubemapTask, ClearCubemapTaskDescriptor, ComputeTaskFactory, DiffuseIrradianceTask,
+    DiffuseIrradianceTaskDescriptor, EquirectToCubemapTask, EquirectToCubemapTaskDescriptor,
 };
 use crate::renderer::materials::pbr_material::PhysicalMaterialDescriptor;
 use crate::renderer::materials::{MaterialFactory, SkydomeMaterialDescriptor};
@@ -105,25 +105,58 @@ impl<'ctx> AssetManager<'ctx> {
                 .build(),
         );
 
-        let compute_task = self
+        let irradiance_cubemap = Arc::new(
+            TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
+                .with_label("diffuse_irradiance")
+                .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+                .with_size(16, 16)
+                .as_cubemap()
+                .with_usage(
+                    wgpu::TextureUsages::TEXTURE_BINDING
+                        | wgpu::TextureUsages::STORAGE_BINDING
+                        | wgpu::TextureUsages::COPY_DST,
+                )
+                .build(),
+        );
+
+        let equirect_to_cubemap_task = self
             .compute_task_factory
             .create_task::<EquirectToCubemapTask>(EquirectToCubemapTaskDescriptor {
                 input_texture: Arc::clone(&sprite_texture),
                 output_cubemap: Arc::clone(&cubemap_texture),
             });
 
+        let clear_task =
+            self.compute_task_factory
+                .create_task::<ClearCubemapTask>(ClearCubemapTaskDescriptor {
+                    cubemap: Arc::clone(&irradiance_cubemap),
+                });
 
+        self.compute_task_factory
+            .create_executor()
+            .record(&self.ctx, &equirect_to_cubemap_task)
+            .execute(&self.ctx)
+            .wait(&self.ctx);
 
-        let mut executor = self.compute_task_factory.create_executor();
-        executor
-            .record(&self.ctx, &compute_task)
+        let diffuse_task = self
+            .compute_task_factory
+            .create_task::<DiffuseIrradianceTask>(DiffuseIrradianceTaskDescriptor {
+                input_cubemap: Arc::clone(&cubemap_texture),
+                output_cubemap: Arc::clone(&irradiance_cubemap),
+            });
+
+        self.compute_task_factory
+            .create_executor()
+            .record(&self.ctx, &diffuse_task)
+            //.record(&self.ctx, &clear_task)
             .execute(&self.ctx)
             .wait(&self.ctx);
 
         let material = self
             .material_factory
             .create_material::<SkydomeEnvironmentMaterial>(SkydomeMaterialDescriptor {
-                texture: Arc::clone(&cubemap_texture),
+                // texture: Arc::clone(&cubemap_texture),
+                texture: Arc::clone(&irradiance_cubemap),
                 dome_radius: radius,
                 dome_factor: factor,
             });

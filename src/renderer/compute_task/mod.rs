@@ -9,6 +9,16 @@ use crate::{
 };
 
 pub mod equirect_to_cubemap;
+pub use equirect_to_cubemap::Task as EquirectToCubemapTask;
+pub use equirect_to_cubemap::TaskDescriptor as EquirectToCubemapTaskDescriptor;
+
+pub mod clear_cubemap;
+pub use clear_cubemap::Task as ClearCubemapTask;
+pub use clear_cubemap::TaskDescriptor as ClearCubemapTaskDescriptor;
+
+pub mod diffuse_irradiance;
+pub use diffuse_irradiance::Task as DiffuseIrradianceTask;
+pub use diffuse_irradiance::TaskDescriptor as DiffuseIrradianceTaskDescriptor;
 
 pub struct ComputeTaskFactory<'a> {
     render_context: &'a RenderContext<'a>,
@@ -70,24 +80,24 @@ impl<'a> ComputeExecutor<'a> {
 
         let encoder = self.get_or_create_encoder(render_context);
         {
-        let mut cpass = encoder.begin_compute_pass(&Default::default());
-        cpass.set_pipeline(pipeline);
-        cpass.set_bind_group(0, &task_instance.bind_group, &[]);
-        cpass.dispatch_workgroups(
-            task_instance.dispatch_size.0,
-            task_instance.dispatch_size.1,
-            task_instance.dispatch_size.2,
-        );
-    }
+            let mut cpass = encoder.begin_compute_pass(&Default::default());
+            cpass.set_pipeline(pipeline);
+            cpass.set_bind_group(0, &task_instance.bind_group, &[]);
+            cpass.dispatch_workgroups(
+                task_instance.dispatch_size.0,
+                task_instance.dispatch_size.1,
+                task_instance.dispatch_size.2,
+            );
+        }
 
         self
     }
 
     pub fn execute(&mut self, render_context: &RenderContext) -> &mut Self {
         if let Some(encoder) = self.encoder.take() {
-        render_context
-            .queue
-            .submit(std::iter::once(encoder.finish()));
+            render_context
+                .queue
+                .submit(std::iter::once(encoder.finish()));
         }
         self
     }
