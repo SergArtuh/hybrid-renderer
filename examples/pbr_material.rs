@@ -27,8 +27,7 @@ pub fn run() {
     );
 
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-        //backends: wgpu::Backends::all(),
-        backends: wgpu::Backends::VULKAN,
+        backends: wgpu::Backends::all(),
         ..Default::default()
     });
 
@@ -107,7 +106,7 @@ pub fn run() {
 
     let asset_manager = renderer.get_asset_manager(&render_context);
     let models = asset_manager
-        .load_gltf_models("assets/models/porsche.glb")
+        .load_gltf_models("assets/models/MetalRoughSpheres.glb")
         .unwrap();
 
     for model_node in &models.scene_roots {
@@ -165,13 +164,6 @@ pub fn run() {
                 let now = Instant::now();
                 let delta_time = now.duration_since(last_time);
                 last_time = now;
-                //frame_time += delta_time.as_secs_f32();
-
-                // let camera_x = f32::sin(frame_time) * CAMERA_DISTANCE;
-                // let camera_z = f32::cos(frame_time) * CAMERA_DISTANCE;
-
-                // stage.main_camera.position.x = camera_x;
-                // stage.main_camera.position.z = camera_z;
 
                 camera_controller.update_camera(&mut stage.main_camera, delta_time);
 

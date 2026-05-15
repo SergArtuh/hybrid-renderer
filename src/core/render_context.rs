@@ -25,7 +25,7 @@ impl<'a> RenderContext<'a> {
             address_mode_w: wgpu::AddressMode::Repeat,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
         let common_nearest_sampler = device.create_sampler(&wgpu::SamplerDescriptor {

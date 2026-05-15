@@ -4,41 +4,35 @@
 
 const PI: f32 = 3.14159265359;
 
-
-fn is_nan(val: f32) -> bool {
-    return val != val;
+fn radical_inverse_vdc(bits_in: u32) -> f32 {
+    var bits = bits_in;
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    return f32(bits) * 2.3283064365386963e-10; // / 0x100000000
 }
 
-fn sanitize_color(color: vec3<f32>) -> vec3<f32> {
-    if (is_nan(color.r) || is_nan(color.g) || is_nan(color.b)) {
-        return vec3(0.0); 
-    }
-    
-    if (color.r > 65000.0 || color.g > 65000.0 || color.b > 65000.0) {
-         return vec3(0.0); 
-    }
-
-    return color;
+fn hammersley(i: u32, N: u32) -> vec2<f32> {
+    return vec2<f32>(f32(i) / f32(N), radical_inverse_vdc(i));
 }
-
 
 fn get_cube_direction(uv: vec2<f32>, face: u32) -> vec3<f32> {
     let st = uv * 2.0 - 1.0;
     switch (face) {
-        case 0u: { return vec3<f32>(1.0, -st.y, -st.x); }  // +X
-        case 1u: { return vec3<f32>(-1.0, -st.y, st.x); }  // -X
-        case 2u: { return vec3<f32>(st.x, 1.0, st.y); }    // +Y
-        case 3u: { return vec3<f32>(st.x, -1.0, -st.y); }  // -Y
-        case 4u: { return vec3<f32>(st.x, -st.y, 1.0); }   // +Z
-        case 5u: { return vec3<f32>(-st.x, -st.y, -1.0); } // -Z
+        case 0u: { return vec3<f32>(1.0, -st.y, -st.x); }
+        case 1u: { return vec3<f32>(-1.0, -st.y, st.x); }
+        case 2u: { return vec3<f32>(st.x, 1.0, st.y); }
+        case 3u: { return vec3<f32>(st.x, -1.0, -st.y); }
+        case 4u: { return vec3<f32>(st.x, -st.y, 1.0); }
+        case 5u: { return vec3<f32>(-st.x, -st.y, -1.0); }
         default: { return vec3<f32>(0.0); }
     }
 }
 
-fn hash22(p: vec2<f32>) -> vec2<f32> {
-    var p3 = fract(vec3(p.xyx) * vec3(443.897, 441.423, 437.195));
-    p3 += dot(p3, p3.yzx + 19.19);
-    return fract((p3.xx + p3.yz) * p3.zy);
+fn compute_lod(pdf: f32, num_samples: f32, width: f32) -> f32 {
+    return 0.5 * log2(6.0 * width * width / (num_samples * pdf));
 }
 
 @compute @workgroup_size(16, 16, 1)
@@ -49,20 +43,20 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let uv = (vec2<f32>(id.xy) + 0.5) / vec2<f32>(dims.xy);
     let normal = normalize(get_cube_direction(uv, id.z));
 
-    var up = vec3(0.0, 1.0, 0.0);
-    if (abs(normal.y) > 0.999) { up = vec3(1.0, 0.0, 0.0); }
+    var up = select(vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), abs(normal.z) < 0.999);
     let right = normalize(cross(up, normal));
     let forward = cross(normal, right);
 
     var irradiance = vec3(0.0);
-    let num_samples = 64u; 
+    let num_samples = 128u;
+    let input_width = f32(textureDimensions(input_tex).x);
 
     for (var i = 0u; i < num_samples; i++) {
-        let rand = hash22(uv + f32(i)); 
-
-        let phi = 2.0 * PI * rand.x;
-        let cos_theta = sqrt(1.0 - rand.y);
-        let sin_theta = sqrt(rand.y);
+        let xi = hammersley(i, num_samples);
+        
+        let phi = 2.0 * PI * xi.x;
+        let cos_theta = sqrt(1.0 - xi.y);
+        let sin_theta = sqrt(xi.y);
 
         let local_sample = vec3(
             cos(phi) * sin_theta,
@@ -70,12 +64,17 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             cos_theta
         );
 
-        let sample_dir = local_sample.x * right + local_sample.y * forward + local_sample.z * normal;
-        irradiance += textureSampleLevel(input_tex, input_sampler, sample_dir, 0.0).rgb;
+        let sample_dir = normalize(local_sample.x * right + local_sample.y * forward + local_sample.z * normal);
+        
+        let pdf = max(cos_theta / PI, 0.001); 
+        let lod = compute_lod(pdf, f32(num_samples), input_width);
+
+        irradiance += textureSampleLevel(input_tex, input_sampler, sample_dir, lod).rgb;
     }
 
-    let final_color = irradiance / f32(num_samples);
-    let color = sanitize_color(final_color);
+    let color = irradiance / f32(num_samples);
+    
+    let safe_color = clamp(color, vec3<f32>(0.0), vec3<f32>(65500.0));
 
-    textureStore(output_tex, id.xy, id.z, vec4(color, 1.0));
+    textureStore(output_tex, id.xy, id.z, vec4(safe_color, 1.0));
 }

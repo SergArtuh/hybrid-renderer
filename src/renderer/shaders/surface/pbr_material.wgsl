@@ -25,6 +25,7 @@ struct ModelUniform {
 @group(0) @binding(0) var<uniform> camera: CameraUniform;
 @group(0) @binding(1) var env_cubemap: texture_cube<f32>;
 @group(0) @binding(2) var s_texture: sampler;
+@group(0) @binding(3) var t_irradiance: texture_cube<f32>;
 
 @group(1) @binding(0) var<uniform> model: ModelUniform;
 
@@ -72,7 +73,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let view_dir = normalize(in.world_position - camera.position.xyz);
     let reflect_dir = reflect(view_dir, normalize(in.normal));
     
-    let hdr_color = textureSample(env_cubemap, s_texture, reflect_dir);
+    let hdr_color_reflect = textureSample(env_cubemap, s_texture, reflect_dir);
+    let hdr_color_irradiance = textureSample(t_irradiance, s_texture, normalize(in.normal));
+    let hdr_color = hdr_color_reflect * 0.5 + hdr_color_irradiance * 0.5;
+    
     let color = hdr_color.rgb / (hdr_color.rgb + vec3(1.0));
     return vec4<f32>(color, 1.0);
     //return vec4<f32>(in.clip_position.xyz / in.clip_position.w, 1.0);

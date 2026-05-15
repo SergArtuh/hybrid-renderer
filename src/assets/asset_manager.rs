@@ -92,7 +92,7 @@ impl<'ctx> AssetManager<'ctx> {
             &MeshUtil::new_procedural_quad(),
         ));
 
-        let cubemap_texture = Arc::new(
+        let cubemap_texture_result = Arc::new(
             TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
                 .with_label("equirect_cubemap")
                 .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
@@ -101,7 +101,8 @@ impl<'ctx> AssetManager<'ctx> {
                 .with_usage(
                     wgpu::TextureUsages::TEXTURE_BINDING
                         | wgpu::TextureUsages::STORAGE_BINDING
-                        | wgpu::TextureUsages::COPY_DST,
+                        | wgpu::TextureUsages::COPY_DST
+                        | wgpu::TextureUsages::COPY_SRC,
                 )
                 .build(),
         );
@@ -124,20 +125,16 @@ impl<'ctx> AssetManager<'ctx> {
             .compute_task_factory
             .create_task::<EquirectToCubemapTask>(EquirectToCubemapTaskDescriptor {
                 input_texture: Arc::clone(&sprite_texture),
-                output_cubemap: Arc::clone(&cubemap_texture),
+                output_cubemap: Arc::clone(&cubemap_texture_result),
             });
-
-        let clear_task =
-            self.compute_task_factory
-                .create_task::<ClearCubemapTask>(ClearCubemapTaskDescriptor {
-                    cubemap: Arc::clone(&irradiance_cubemap),
-                });
 
         self.compute_task_factory
             .create_executor()
             .record(&self.ctx, &equirect_to_cubemap_task)
             .execute(&self.ctx)
             .wait(&self.ctx);
+
+        let cubemap_texture = self.generate_mipmaps(&cubemap_texture_result).unwrap();
 
         let diffuse_task = self
             .compute_task_factory
@@ -149,15 +146,14 @@ impl<'ctx> AssetManager<'ctx> {
         self.compute_task_factory
             .create_executor()
             .record(&self.ctx, &diffuse_task)
-            //.record(&self.ctx, &clear_task)
             .execute(&self.ctx)
             .wait(&self.ctx);
 
         let material = self
             .material_factory
             .create_material::<SkydomeEnvironmentMaterial>(SkydomeMaterialDescriptor {
-                // texture: Arc::clone(&cubemap_texture),
-                texture: Arc::clone(&irradiance_cubemap),
+                skybox_texture: Arc::clone(&cubemap_texture),
+                irradiance_texture: Arc::clone(&irradiance_cubemap),
                 dome_radius: radius,
                 dome_factor: factor,
             });

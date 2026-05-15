@@ -5,7 +5,9 @@ use wgpu::util::DeviceExt;
 
 use crate::{
     core::{
-        material::{MaterialDomain, MaterialTrait, MaterialType, SkydomeEnvironmentMaterial},
+        material::{
+            EnvironmentMap, MaterialDomain, MaterialTrait, MaterialType, SkydomeEnvironmentMaterial,
+        },
         render_context::RenderContext,
         texture::Texture,
         uniforms::SkydomeUniform,
@@ -15,7 +17,8 @@ use crate::{
 };
 
 pub struct SkydomeMaterialDescriptor {
-    pub texture: Arc<Texture>,
+    pub skybox_texture: Arc<Texture>,
+    pub irradiance_texture: Arc<Texture>,
     pub dome_radius: f32,
     pub dome_factor: f32,
 }
@@ -74,7 +77,12 @@ impl SkydomeMaterialDefinition {
             });
 
         SkydomeEnvironmentMaterial {
-            cubemap_texture: Arc::clone(&desc.texture.view),
+            environment_map: EnvironmentMap {
+                skybox: Arc::clone(&desc.skybox_texture.view),
+                irradiance: Arc::clone(&desc.irradiance_texture.view),
+                prefiltered: None,
+                brdf_lut: None,
+            },
             uniform_buffer,
             bind_group,
         }

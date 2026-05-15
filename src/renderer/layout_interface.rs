@@ -52,6 +52,16 @@ impl LayoutInterface {
                             ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                             count: None,
                         },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 3,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                multisampled: false,
+                                view_dimension: wgpu::TextureViewDimension::Cube,
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            },
+                            count: None,
+                        },
                     ],
                     label: Some("global_bind_group_layout"),
                 });
@@ -108,11 +118,14 @@ impl GlobalResources {
 
         let skybox_texture = Arc::clone(&render_context.default_textures.cubemap.view);
 
+        let irradiance_texture = Arc::clone(&render_context.default_textures.cubemap.view);
+
         let bind_group = Self::create_global_bind_group(
             render_context,
             bind_group_layout,
             &camera_uniform_buffer,
             &skybox_texture,
+            &irradiance_texture,
             &render_context.common_sampler,
         );
 
@@ -141,6 +154,7 @@ impl GlobalResources {
         render_context: &RenderContext,
         bind_group_layout: &wgpu::BindGroupLayout,
         skybox_texture: Arc<wgpu::TextureView>,
+        irradiance_texture: Arc<wgpu::TextureView>,
     ) {
         if Arc::ptr_eq(&self.skybox_texture, &skybox_texture) {
             return;
@@ -152,6 +166,7 @@ impl GlobalResources {
             bind_group_layout,
             &self.camera_uniform_buffer,
             &self.skybox_texture,
+            &irradiance_texture,
             &render_context.common_sampler,
         );
     }
@@ -161,10 +176,15 @@ impl GlobalResources {
         bind_group_layout: &wgpu::BindGroupLayout,
         camera_uniform_buffer: &wgpu::Buffer,
         skybox_texture: &wgpu::TextureView,
+        irradiance_texture: &wgpu::TextureView,
         skybox_sampler: &wgpu::Sampler,
     ) -> wgpu::BindGroup {
         let mut entries = Self::get_camera_entries(camera_uniform_buffer);
-        entries.extend(Self::get_skydome_entries(&skybox_texture, &skybox_sampler));
+        entries.extend(Self::get_skydome_entries(
+            &skybox_texture,
+            &irradiance_texture,
+            &skybox_sampler,
+        ));
 
         render_context
             .device
@@ -186,17 +206,22 @@ impl GlobalResources {
         }]
     }
     fn get_skydome_entries<'a>(
-        texture: &'a wgpu::TextureView,
+        skybox_texture: &'a wgpu::TextureView,
+        irradiance_texture: &'a wgpu::TextureView,
         sampler: &'a wgpu::Sampler,
     ) -> Vec<wgpu::BindGroupEntry<'a>> {
         vec![
             wgpu::BindGroupEntry {
                 binding: 1,
-                resource: wgpu::BindingResource::TextureView(&texture),
+                resource: wgpu::BindingResource::TextureView(&skybox_texture),
             },
             wgpu::BindGroupEntry {
                 binding: 2,
                 resource: wgpu::BindingResource::Sampler(sampler),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: wgpu::BindingResource::TextureView(&irradiance_texture),
             },
         ]
     }

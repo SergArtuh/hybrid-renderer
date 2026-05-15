@@ -86,8 +86,15 @@ pub struct PhysicalMaterial {
     pub bind_group: wgpu::BindGroup,
 }
 
+pub struct EnvironmentMap {
+    pub skybox: Arc<wgpu::TextureView>,
+    pub irradiance: Arc<wgpu::TextureView>,
+    pub prefiltered: Option<Arc<wgpu::TextureView>>,
+    pub brdf_lut: Option<Arc<wgpu::TextureView>>,
+}
+
 pub struct SkydomeEnvironmentMaterial {
-    pub cubemap_texture: Arc<wgpu::TextureView>,
+    pub environment_map: EnvironmentMap,
     pub uniform_buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
 }

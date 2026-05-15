@@ -1,5 +1,5 @@
 use crate::assets::skydome::Skydome;
-use crate::core::material::Material;
+use crate::core::material::{EnvironmentMap, Material};
 use crate::core::mesh::Mesh;
 use crate::core::uniforms::CameraUniform;
 use std::sync::Arc;
@@ -27,9 +27,9 @@ pub struct FrameData {
 }
 
 impl FrameData {
-    pub fn get_environment_texture(&self) -> Option<Arc<wgpu::TextureView>> {
+    pub fn get_environment_texture(&self) -> Option<&EnvironmentMap> {
         match self.skydome.as_ref()?.material.as_ref() {
-            Material::Skydome(m) => Some(Arc::clone(&m.cubemap_texture)),
+            Material::Skydome(m) => Some(&m.environment_map),
             _ => None,
         }
     }

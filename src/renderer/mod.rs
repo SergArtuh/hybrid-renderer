@@ -181,7 +181,8 @@ impl Renderer {
                 self.global_resources.update_skybox_texture(
                     render_context,
                     &self.layout_interface.borrow().global,
-                    environment_texture,
+                    Arc::clone(&environment_texture.skybox),
+                    Arc::clone(&environment_texture.irradiance),
                 )
             });
 
