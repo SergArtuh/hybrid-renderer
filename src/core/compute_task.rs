@@ -5,6 +5,7 @@ pub enum ComputeTaskType {
     EquirectToCubemap,
     ClearCubemap,
     DiffuseIrradiance,
+    MipmapGenerator,
 }
 
 pub struct ComputeTaskInstance {

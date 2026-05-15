@@ -94,6 +94,7 @@ pub struct TextureBuilder<'a> {
     source: TextureSource<'a>,
     size: Option<(u32, u32)>,
     usage: wgpu::TextureUsages,
+    mip_level_count: u32,
     is_cubemap: bool,
 }
 
@@ -116,6 +117,7 @@ impl<'a> TextureBuilder<'a> {
             size: None,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             is_cubemap: false,
+            mip_level_count: 1,
         }
     }
 
@@ -157,6 +159,11 @@ impl<'a> TextureBuilder<'a> {
 
     pub fn with_address_mode(mut self, mode: wgpu::AddressMode) -> Self {
         self.address_mode = mode;
+        self
+    }
+
+    pub fn with_mip_level_count(mut self, count: u32) -> Self {
+        self.mip_level_count = count;
         self
     }
 
@@ -211,7 +218,7 @@ impl<'a> TextureBuilder<'a> {
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: self.label,
             size: texture_size,
-            mip_level_count: 1,
+            mip_level_count: self.mip_level_count,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format,
@@ -350,7 +357,9 @@ impl<'a> TextureBuilder<'a> {
             Some(dbg!(img.color()))
         } else {
             match self.format.precision {
-                ComponentPrecision::F32 | ComponentPrecision::F16 => Some(image::ColorType::Rgba32F),
+                ComponentPrecision::F32 | ComponentPrecision::F16 => {
+                    Some(image::ColorType::Rgba32F)
+                }
                 ComponentPrecision::U8 => Some(image::ColorType::Rgba8),
                 _ => panic!("Unsupported precision: {:?}", self.format.precision),
             }
@@ -361,11 +370,8 @@ impl<'a> TextureBuilder<'a> {
                 let rgba = img.to_rgba32f();
                 let (w, h) = rgba.dimensions();
                 if self.format.precision == ComponentPrecision::F16 {
-                    let f16_data: Vec<f16> = rgba
-                        .into_raw()
-                        .into_iter()
-                        .map(f16::from_f32)
-                        .collect();
+                    let f16_data: Vec<f16> =
+                        rgba.into_raw().into_iter().map(f16::from_f32).collect();
                     (w, h, RawTextureData::F16(f16_data))
                 } else {
                     (w, h, RawTextureData::F32(rgba.into_raw()))
@@ -448,7 +454,11 @@ impl<'a> TextureBuilder<'a> {
         {
             (width, height, RawTextureData::U8(vec![0; total_elements]))
         } else if self.format.precision == ComponentPrecision::F16 {
-            (width, height, RawTextureData::F16(vec![f16::ZERO; total_elements]))
+            (
+                width,
+                height,
+                RawTextureData::F16(vec![f16::ZERO; total_elements]),
+            )
         } else {
             (
                 width,

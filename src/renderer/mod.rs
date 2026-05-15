@@ -9,6 +9,7 @@ use crate::{
     renderer::{
         compute_task::{
             ClearCubemapTask, ComputeTaskFactory, DiffuseIrradianceTask, EquirectToCubemapTask,
+            MipmapGeneratorTask,
         },
         frame_target::FrameTarget,
         layout_interface::{GlobalResources, LayoutInterface, ModelResources},
@@ -80,6 +81,11 @@ impl Renderer {
         );
 
         pipeline_manager.register_compute_pipeline::<DiffuseIrradianceTask>(
+            render_context,
+            Arc::clone(&layout_interface),
+        );
+
+        pipeline_manager.register_compute_pipeline::<MipmapGeneratorTask>(
             render_context,
             Arc::clone(&layout_interface),
         );

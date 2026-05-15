@@ -20,6 +20,10 @@ pub mod diffuse_irradiance;
 pub use diffuse_irradiance::Task as DiffuseIrradianceTask;
 pub use diffuse_irradiance::TaskDescriptor as DiffuseIrradianceTaskDescriptor;
 
+pub mod mipmap_generator;
+pub use mipmap_generator::Task as MipmapGeneratorTask;
+pub use mipmap_generator::TaskDescriptor as MipmapGeneratorTaskDescriptor;
+
 pub struct ComputeTaskFactory<'a> {
     render_context: &'a RenderContext<'a>,
     layout_interface: Arc<RefCell<LayoutInterface>>,

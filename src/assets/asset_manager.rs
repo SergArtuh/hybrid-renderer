@@ -6,8 +6,9 @@ use crate::core::render_context::RenderContext;
 use crate::core::texture::Texture;
 use crate::core::texture_builder::{ComponentPrecision, TextureBuilder, TextureChannels};
 use crate::renderer::compute_task::{
-    ClearCubemapTask, ClearCubemapTaskDescriptor, ComputeTaskFactory, DiffuseIrradianceTask,
-    DiffuseIrradianceTaskDescriptor, EquirectToCubemapTask, EquirectToCubemapTaskDescriptor,
+    ComputeTaskFactory, DiffuseIrradianceTask, DiffuseIrradianceTaskDescriptor,
+    EquirectToCubemapTask, EquirectToCubemapTaskDescriptor, MipmapGeneratorTask,
+    MipmapGeneratorTaskDescriptor,
 };
 use crate::renderer::materials::pbr_material::PhysicalMaterialDescriptor;
 use crate::renderer::materials::{MaterialFactory, SkydomeMaterialDescriptor};
@@ -301,5 +302,130 @@ impl<'ctx> AssetManager<'ctx> {
                 )
             })
             .collect()
+    }
+
+    fn generate_mipmaps(
+        &self,
+        source_texture: &Arc<Texture>,
+    ) -> Result<Arc<Texture>, anyhow::Error> {
+        let origin_width = source_texture.width;
+        let origin_height = source_texture.height;
+
+        // 1. Считаем полное количество уровней
+        let mip_count = (origin_width.max(origin_height) as f32).log2().floor() as u32 + 1;
+
+        // 2. Создаем финальную текстуру со всеми уровнями
+        let result_texture = Arc::new(
+            TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
+                .with_label("final_mipmapped_cubemap")
+                .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+                .with_size(origin_width, origin_height)
+                .with_mip_level_count(mip_count)
+                .as_cubemap()
+                .with_usage(
+                    wgpu::TextureUsages::TEXTURE_BINDING
+                        | wgpu::TextureUsages::COPY_DST
+                        | wgpu::TextureUsages::COPY_SRC,
+                )
+                .build(),
+        );
+
+        // 3. Копируем исходный уровень 0 в финальную текстуру
+        let mut encoder = self
+            .ctx
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Initial Mip Copy"),
+            });
+        encoder.copy_texture_to_texture(
+            source_texture.texture.as_image_copy(),
+            result_texture.texture.as_image_copy(),
+            wgpu::Extent3d {
+                width: origin_width,
+                height: origin_height,
+                depth_or_array_layers: 6,
+            },
+        );
+        self.ctx.queue.submit(Some(encoder.finish()));
+
+        // Текущим источником для первого шага цикла будет уровень 0 финальной текстуры
+        // Но так как нам нужно передавать Arc<Texture> в твой таск,
+        // будем использовать source_texture для первого прохода.
+        let mut current_src = Arc::clone(source_texture);
+
+        // 4. Цикл генерации: начинаем с 1-го уровня (0-й уже есть)
+        for target_mip in 1..mip_count {
+            let mip_width = (origin_width >> target_mip).max(1);
+            let mip_height = (origin_height >> target_mip).max(1);
+
+            println!("Generating mip {} {}x{}", target_mip, mip_width, mip_height);
+
+            // Создаем временную текстуру строго под текущий размер мипа
+            let temp_mip_out = Arc::new(
+                TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
+                    .with_label(&format!("temp_mip_{}", target_mip))
+                    .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+                    .with_size(mip_width, mip_height)
+                    .as_cubemap()
+                    .with_usage(
+                        wgpu::TextureUsages::TEXTURE_BINDING
+                            | wgpu::TextureUsages::STORAGE_BINDING
+                            | wgpu::TextureUsages::COPY_DST
+                            | wgpu::TextureUsages::COPY_SRC,
+                    )
+                    .build(),
+            );
+
+            // Выполняем Compute Task: читаем из current_src, пишем в temp_mip_out
+            let mipmap_task = self
+                .compute_task_factory
+                .create_task::<MipmapGeneratorTask>(MipmapGeneratorTaskDescriptor {
+                    source_texture: Arc::clone(&current_src),
+                    output_texture: Arc::clone(&temp_mip_out),
+                });
+
+            self.compute_task_factory
+                .create_executor()
+                .record(&self.ctx, &mipmap_task)
+                .execute(&self.ctx)
+                .wait(&self.ctx);
+
+            // Копируем результат из временной текстуры в нужный уровень основной
+            let mut copy_encoder =
+                self.ctx
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some(&format!("Copy Mip {}", target_mip)),
+                    });
+
+            copy_encoder.copy_texture_to_texture(
+                wgpu::ImageCopyTexture {
+                    texture: &temp_mip_out.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::ImageCopyTexture {
+                    texture: &result_texture.texture,
+                    mip_level: target_mip,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::Extent3d {
+                    width: mip_width,
+                    height: mip_height,
+                    depth_or_array_layers: 6,
+                },
+            );
+
+            self.ctx.queue.submit(Some(copy_encoder.finish()));
+
+            // Важно: теперь источником для следующего уровня (например, для мипа 2)
+            // становится текущий сгенерированный мип 1.
+            current_src = temp_mip_out;
+        }
+
+        self.ctx.device.poll(wgpu::Maintain::Wait);
+        Ok(result_texture)
     }
 }
