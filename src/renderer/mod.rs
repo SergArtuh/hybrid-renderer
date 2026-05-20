@@ -9,7 +9,7 @@ use crate::{
     renderer::{
         compute_task::{
             ClearCubemapTask, ComputeTaskFactory, DiffuseIrradianceTask, EquirectToCubemapTask,
-            MipmapGeneratorTask,
+            MipmapGeneratorTask, SpecularPrefilterTask,
         },
         frame_target::FrameTarget,
         layout_interface::{GlobalResources, LayoutInterface, ModelResources},
@@ -86,6 +86,11 @@ impl Renderer {
         );
 
         pipeline_manager.register_compute_pipeline::<MipmapGeneratorTask>(
+            render_context,
+            Arc::clone(&layout_interface),
+        );
+
+        pipeline_manager.register_compute_pipeline::<SpecularPrefilterTask>(
             render_context,
             Arc::clone(&layout_interface),
         );
@@ -183,6 +188,7 @@ impl Renderer {
                     &self.layout_interface.borrow().global,
                     Arc::clone(&environment_texture.skybox),
                     Arc::clone(&environment_texture.irradiance),
+                    Arc::clone(&environment_texture.specular),
                 )
             });
 

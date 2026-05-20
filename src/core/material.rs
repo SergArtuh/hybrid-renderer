@@ -89,8 +89,7 @@ pub struct PhysicalMaterial {
 pub struct EnvironmentMap {
     pub skybox: Arc<wgpu::TextureView>,
     pub irradiance: Arc<wgpu::TextureView>,
-    pub prefiltered: Option<Arc<wgpu::TextureView>>,
-    pub brdf_lut: Option<Arc<wgpu::TextureView>>,
+    pub specular: Arc<wgpu::TextureView>,
 }
 
 pub struct SkydomeEnvironmentMaterial {

@@ -29,3 +29,18 @@ impl SkydomeUniform {
         }
     }
 }
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct SpecularPrefilterUniform {
+    // [roughness, 0.0, 0.0, 0.0]
+    pub data: [f32; 4],
+}
+
+impl SpecularPrefilterUniform {
+    pub fn new(roughness: f32) -> Self {
+        Self {
+            data: [roughness, 0.0, 0.0, 0.0],
+        }
+    }
+}

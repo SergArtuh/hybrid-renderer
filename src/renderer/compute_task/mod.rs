@@ -20,6 +20,10 @@ pub mod diffuse_irradiance;
 pub use diffuse_irradiance::Task as DiffuseIrradianceTask;
 pub use diffuse_irradiance::TaskDescriptor as DiffuseIrradianceTaskDescriptor;
 
+pub mod specular_prefilter;
+pub use specular_prefilter::Task as SpecularPrefilterTask;
+pub use specular_prefilter::TaskDescriptor as SpecularPrefilterTaskDescriptor;
+
 pub mod mipmap_generator;
 pub use mipmap_generator::Task as MipmapGeneratorTask;
 pub use mipmap_generator::TaskDescriptor as MipmapGeneratorTaskDescriptor;
@@ -56,7 +60,14 @@ impl<'a> ComputeTaskFactory<'a> {
     }
 
     pub fn create_executor(&self) -> ComputeExecutor<'_> {
-        ComputeExecutor::new(self.pipeline_manager, self.render_context)
+        ComputeExecutor::new(self.pipeline_manager)
+    }
+
+    pub fn create_executor_from_encoder(
+        &self,
+        encoder: wgpu::CommandEncoder,
+    ) -> ComputeExecutor<'_> {
+        ComputeExecutor::from_encoder(self.pipeline_manager, encoder)
     }
 }
 
@@ -66,11 +77,25 @@ pub struct ComputeExecutor<'a> {
 }
 
 impl<'a> ComputeExecutor<'a> {
-    pub fn new(pipeline_manager: &'a PipelineManager, _render_context: &RenderContext) -> Self {
+    pub fn new(pipeline_manager: &'a PipelineManager) -> Self {
         Self {
             pipeline_manager,
             encoder: None,
         }
+    }
+
+    pub fn from_encoder(
+        pipeline_manager: &'a PipelineManager,
+        encoder: wgpu::CommandEncoder,
+    ) -> Self {
+        Self {
+            pipeline_manager,
+            encoder: Some(encoder),
+        }
+    }
+
+    pub fn take_encoder(&mut self) -> Option<wgpu::CommandEncoder> {
+        self.encoder.take()
     }
 
     pub fn record(
@@ -108,6 +133,10 @@ impl<'a> ComputeExecutor<'a> {
 
     pub fn wait(&self, render_context: &RenderContext) {
         render_context.device.poll(wgpu::Maintain::Wait);
+    }
+
+    pub fn get_encoder_mut(&mut self) -> Option<&mut wgpu::CommandEncoder> {
+        self.encoder.as_mut()
     }
 
     fn get_or_create_encoder(

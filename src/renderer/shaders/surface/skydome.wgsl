@@ -17,6 +17,7 @@ struct SkydomeUniform {
 @group(0) @binding(1) var t_cubemap: texture_cube<f32>;
 @group(0) @binding(2) var s_texture: sampler;
 @group(0) @binding(3) var t_irradiance: texture_cube<f32>;
+@group(0) @binding(4) var t_specular: texture_cube<f32>;
 
 @group(2) @binding(2) var<uniform> skydome_uniform: SkydomeUniform;
 
@@ -65,6 +66,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let final_dir = normalize(hit_point - sphere_center);
 
     let hdr_color = textureSample(t_cubemap, s_texture, final_dir);
+    //let hdr_color = textureSampleLevel(t_cubemap, s_texture, final_dir, 3.0);
+    //let hdr_color = textureSampleLevel(t_specular, s_texture, final_dir, 3.0);
     let tone_mapped_rgb = hdr_color.rgb / (hdr_color.rgb + vec3(1.0));
     
     return vec4<f32>(tone_mapped_rgb, 1.0);

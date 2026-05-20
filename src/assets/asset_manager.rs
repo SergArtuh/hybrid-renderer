@@ -1,3 +1,5 @@
+use wgpu::util::DeviceExt;
+
 use crate::assets::skydome::Skydome;
 use crate::core::material::{Material, PhysicalMaterial, SkydomeEnvironmentMaterial};
 use crate::core::mesh::{Mesh, MeshData};
@@ -5,10 +7,11 @@ use crate::core::model_node::ModelNode;
 use crate::core::render_context::RenderContext;
 use crate::core::texture::Texture;
 use crate::core::texture_builder::{ComponentPrecision, TextureBuilder, TextureChannels};
+use crate::core::uniforms::SpecularPrefilterUniform;
 use crate::renderer::compute_task::{
     ComputeTaskFactory, DiffuseIrradianceTask, DiffuseIrradianceTaskDescriptor,
     EquirectToCubemapTask, EquirectToCubemapTaskDescriptor, MipmapGeneratorTask,
-    MipmapGeneratorTaskDescriptor,
+    MipmapGeneratorTaskDescriptor, SpecularPrefilterTask, SpecularPrefilterTaskDescriptor,
 };
 use crate::renderer::materials::pbr_material::PhysicalMaterialDescriptor;
 use crate::renderer::materials::{MaterialFactory, SkydomeMaterialDescriptor};
@@ -149,11 +152,16 @@ impl<'ctx> AssetManager<'ctx> {
             .execute(&self.ctx)
             .wait(&self.ctx);
 
+        let specular_cubemap = self
+            .prefilter_specular_cubemap(&self.ctx, Arc::clone(&cubemap_texture))
+            .unwrap();
+
         let material = self
             .material_factory
             .create_material::<SkydomeEnvironmentMaterial>(SkydomeMaterialDescriptor {
                 skybox_texture: Arc::clone(&cubemap_texture),
                 irradiance_texture: Arc::clone(&irradiance_cubemap),
+                specular_texture: Arc::clone(&specular_cubemap),
                 dome_radius: radius,
                 dome_factor: factor,
             });
@@ -307,10 +315,8 @@ impl<'ctx> AssetManager<'ctx> {
         let origin_width = source_texture.width;
         let origin_height = source_texture.height;
 
-        // 1. Считаем полное количество уровней
         let mip_count = (origin_width.max(origin_height) as f32).log2().floor() as u32 + 1;
 
-        // 2. Создаем финальную текстуру со всеми уровнями
         let result_texture = Arc::new(
             TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
                 .with_label("final_mipmapped_cubemap")
@@ -326,7 +332,6 @@ impl<'ctx> AssetManager<'ctx> {
                 .build(),
         );
 
-        // 3. Копируем исходный уровень 0 в финальную текстуру
         let mut encoder = self
             .ctx
             .device
@@ -344,19 +349,14 @@ impl<'ctx> AssetManager<'ctx> {
         );
         self.ctx.queue.submit(Some(encoder.finish()));
 
-        // Текущим источником для первого шага цикла будет уровень 0 финальной текстуры
-        // Но так как нам нужно передавать Arc<Texture> в твой таск,
-        // будем использовать source_texture для первого прохода.
         let mut current_src = Arc::clone(source_texture);
 
-        // 4. Цикл генерации: начинаем с 1-го уровня (0-й уже есть)
         for target_mip in 1..mip_count {
             let mip_width = (origin_width >> target_mip).max(1);
             let mip_height = (origin_height >> target_mip).max(1);
 
             println!("Generating mip {} {}x{}", target_mip, mip_width, mip_height);
 
-            // Создаем временную текстуру строго под текущий размер мипа
             let temp_mip_out = Arc::new(
                 TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
                     .with_label(&format!("temp_mip_{}", target_mip))
@@ -372,7 +372,6 @@ impl<'ctx> AssetManager<'ctx> {
                     .build(),
             );
 
-            // Выполняем Compute Task: читаем из current_src, пишем в temp_mip_out
             let mipmap_task = self
                 .compute_task_factory
                 .create_task::<MipmapGeneratorTask>(MipmapGeneratorTaskDescriptor {
@@ -386,7 +385,6 @@ impl<'ctx> AssetManager<'ctx> {
                 .execute(&self.ctx)
                 .wait(&self.ctx);
 
-            // Копируем результат из временной текстуры в нужный уровень основной
             let mut copy_encoder =
                 self.ctx
                     .device
@@ -415,13 +413,105 @@ impl<'ctx> AssetManager<'ctx> {
             );
 
             self.ctx.queue.submit(Some(copy_encoder.finish()));
-
-            // Важно: теперь источником для следующего уровня (например, для мипа 2)
-            // становится текущий сгенерированный мип 1.
             current_src = temp_mip_out;
         }
 
         self.ctx.device.poll(wgpu::Maintain::Wait);
+        Ok(result_texture)
+    }
+
+    pub fn prefilter_specular_cubemap(
+        &self,
+        render_context: &RenderContext,
+        source_cubemap: Arc<Texture>,
+    ) -> Result<Arc<Texture>, anyhow::Error> {
+        let origin_width = source_cubemap.width;
+        let origin_height = source_cubemap.height;
+
+        let mip_count = (origin_width.max(origin_height) as f32).log2().floor() as u32 + 1;
+
+        let result_texture = Arc::new(
+            TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
+                .with_label("final_mipmapped_cubemap")
+                .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+                .with_size(origin_width, origin_height)
+                .with_mip_level_count(mip_count)
+                .as_cubemap()
+                .with_usage(
+                    wgpu::TextureUsages::TEXTURE_BINDING
+                        | wgpu::TextureUsages::COPY_DST
+                        | wgpu::TextureUsages::COPY_SRC,
+                )
+                .build(),
+        );
+
+        let mut executor = self.compute_task_factory.create_executor();
+
+        for mip in 0..mip_count {
+            let mip_width = (origin_width >> mip).max(1);
+            let mip_height = (origin_height >> mip).max(1);
+            let linear_roughness = mip as f32 / (mip_count - 1).max(1) as f32;
+            let roughness = linear_roughness * linear_roughness;
+
+            let temp_specular_mip_out = Arc::new(
+                TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
+                    .with_label(&format!("temp_specular_mip_{}", mip))
+                    .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+                    .with_size(mip_width, mip_height)
+                    .as_cubemap()
+                    .with_usage(
+                        wgpu::TextureUsages::TEXTURE_BINDING
+                            | wgpu::TextureUsages::STORAGE_BINDING
+                            | wgpu::TextureUsages::COPY_DST
+                            | wgpu::TextureUsages::COPY_SRC,
+                    )
+                    .build(),
+            );
+
+            let specular_mipmap_data = SpecularPrefilterUniform::new(roughness);
+            let specular_mipmap_buffer = Arc::new(render_context.device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("Specular Prefilter Uniform Buffer"),
+                    contents: bytemuck::cast_slice(&[specular_mipmap_data]),
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                },
+            ));
+
+            let prefilter_task = self
+                .compute_task_factory
+                .create_task::<SpecularPrefilterTask>(SpecularPrefilterTaskDescriptor {
+                    input_cubemap: Arc::clone(&source_cubemap),
+                    output_cubemap: Arc::clone(&temp_specular_mip_out),
+                    config: Arc::clone(&specular_mipmap_buffer),
+                });
+
+            executor.record(&self.ctx, &prefilter_task);
+
+            executor
+                .get_encoder_mut()
+                .expect("Encoder not found")
+                .copy_texture_to_texture(
+                    wgpu::ImageCopyTexture {
+                        texture: &temp_specular_mip_out.texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    wgpu::ImageCopyTexture {
+                        texture: &result_texture.texture,
+                        mip_level: mip,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    wgpu::Extent3d {
+                        width: mip_width,
+                        height: mip_height,
+                        depth_or_array_layers: 6,
+                    },
+                );
+        }
+        executor.execute(&self.ctx);
+        executor.wait(&self.ctx);
         Ok(result_texture)
     }
 }

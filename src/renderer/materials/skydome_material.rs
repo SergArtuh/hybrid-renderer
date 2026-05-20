@@ -19,6 +19,7 @@ use crate::{
 pub struct SkydomeMaterialDescriptor {
     pub skybox_texture: Arc<Texture>,
     pub irradiance_texture: Arc<Texture>,
+    pub specular_texture: Arc<Texture>,
     pub dome_radius: f32,
     pub dome_factor: f32,
 }
@@ -80,8 +81,7 @@ impl SkydomeMaterialDefinition {
             environment_map: EnvironmentMap {
                 skybox: Arc::clone(&desc.skybox_texture.view),
                 irradiance: Arc::clone(&desc.irradiance_texture.view),
-                prefiltered: None,
-                brdf_lut: None,
+                specular: Arc::clone(&desc.specular_texture.view),
             },
             uniform_buffer,
             bind_group,
