@@ -23,23 +23,19 @@ fn hammersley(i: u32, N: u32) -> vec2<f32> {
     return vec2<f32>(f32(i) / f32(N), radical_inverse_vdc(i));
 }
 
-// Важно: Importance Sampling для GGX (определяет форму зеркального блика)
 fn importance_sample_ggx(xi: vec2<f32>, N: vec3<f32>, roughness: f32) -> vec3<f32> {
-    let a = roughness * roughness; // Движки используют квадрат roughness для линейности восприятия
+    let a = roughness;
     
     let phi = 2.0 * PI * xi.x;
     let cos_theta = sqrt((1.0 - xi.y) / (1.0 + (a * a - 1.0) * xi.y));
     let sin_theta = sqrt(max(0.0, 1.0 - cos_theta * cos_theta));
     
-    // Переводим из сферических координат в декартовы (вектор полупути H)
     let H = vec3<f32>(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
     
-    // Строим локальный базис вокруг нормали
     var up = select(vec3(1.0, 0.0, 0.0), vec3(0.0, 0.0, 1.0), abs(N.z) < 0.999);
     let tangent = normalize(cross(up, N));
     let bitangent = cross(N, tangent);
     
-    // Возвращаем вектор в мировых координатах
     return normalize(tangent * H.x + bitangent * H.y + N * H.z);
 }
 
@@ -56,9 +52,8 @@ fn get_cube_direction(uv: vec2<f32>, face: u32) -> vec3<f32> {
     }
 }
 
-// Функция распределения нормалей микрофасок (D)
 fn distribution_ggx(NdotH: f32, roughness: f32) -> f32 {
-    let a = roughness * roughness;
+    let a = roughness;
     let a2 = a * a;
     let NdotH2 = NdotH * NdotH;
     let nom = a2;
@@ -75,22 +70,19 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     let uv = (vec2<f32>(id.xy) + 0.5) / vec2<f32>(dims.xy);
     let N = normalize(get_cube_direction(uv, id.z));
     
-    // В приближении Split-Sum предполагается, что вектор взгляда V равен нормали N
     let V = N;
 
     var prefiltered_color = vec3(0.0);
     var total_weight = 0.0;
     
-    let num_samples = 512u; // Для Specular нужно чуть больше семплов, чем для диффуза
+    let num_samples = 512u;
     let input_width = f32(textureDimensions(input_tex).x);
 
     for (var i = 0u; i < num_samples; i++) {
         let xi = hammersley(i, num_samples);
         
-        // Генерируем вектор микронормали (полупути) H
         let H = importance_sample_ggx(xi, N, roughness);
         
-        // Вычисляем вектор отражения света L
         let L = normalize(2.0 * dot(V, H) * H - V);
         
         let NdotL = max(dot(N, L), 0.0);
@@ -98,11 +90,9 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
             let NdotH = max(dot(N, H), 0.0);
             let VdotH = max(dot(V, H), 0.0);
             
-            // Вычисляем PDF (Probability Density Function) для GGX
             let D = distribution_ggx(NdotH, roughness);
             let pdf = (D * NdotH / (4.0 * VdotH)) + 0.0001;
             
-            // Расчет MIP-level (LOD) на основе PDF, чтобы не было шума
             let sa_texel = 4.0 * PI / (6.0 * input_width * input_width);
             let sa_sample = 1.0 / (f32(num_samples) * pdf + 0.0001);
             let lod = select(0.5 * log2(sa_sample / sa_texel), 0.0, roughness == 0.0);
@@ -113,8 +103,6 @@ fn main(@builtin(global_invocation_id) id: vec3<u32>) {
     }
 
     var color = prefiltered_color / max(total_weight, 0.0001);
-    
-    // Защита от NaN
     color = select(color, vec3(0.0), any(color != color));
 
     textureStore(output_tex, id.xy, id.z, vec4(color, 1.0));

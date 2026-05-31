@@ -108,6 +108,7 @@ pub fn run() {
     let asset_manager = renderer.get_asset_manager(&render_context);
     let models = asset_manager
         .load_gltf_models("assets/models/porsche.glb")
+        //.load_gltf_models("assets/models/ClearCoatTest.glb")
         .unwrap();
 
     for model_node in &models.scene_roots {

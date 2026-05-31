@@ -116,9 +116,10 @@ pub fn run() {
         stage.add_model(model);
     }
     let skydome = asset_manager
-        //.load_skybox("assets/modern_buildings_night_1k.exr")
-        //.load_skybox("assets/modern_buildings_night_8k.exr")
-        .load_skydome("assets/zwartkops_curve_sunset_4k.exr", 150.0, 0.95)
+        //.load_skydome("assets/modern_buildings_night_1k.exr")
+        .load_skydome("assets/modern_buildings_night_8k.exr", 150.0, 0.95)
+        //.load_skydome("assets/zwartkops_curve_sunset_4k.exr", 150.0, 0.95)
+        //.load_skydome("assets/cannon_1k.hdr", 150.0, 0.95)
         .unwrap();
     stage.set_skydome(skydome);
 

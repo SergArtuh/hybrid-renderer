@@ -31,6 +31,15 @@ impl SkydomeUniform {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct PbrMaterialUniforms {
+    pub base_color_factor: [f32; 4],
+    pub emissive_and_scale: [f32; 4],
+    pub pbr_factors: [f32; 4],
+    pub clearcoat_factors: [f32; 4],
+}
+
+#[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct SpecularPrefilterUniform {
     // [roughness, 0.0, 0.0, 0.0]

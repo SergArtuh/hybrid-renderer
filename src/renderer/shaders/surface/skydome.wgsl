@@ -68,7 +68,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let hdr_color = textureSample(t_cubemap, s_texture, final_dir);
     //let hdr_color = textureSampleLevel(t_cubemap, s_texture, final_dir, 3.0);
     //let hdr_color = textureSampleLevel(t_specular, s_texture, final_dir, 3.0);
-    let tone_mapped_rgb = hdr_color.rgb / (hdr_color.rgb + vec3(1.0));
+    //let tone_mapped_rgb = hdr_color.rgb / (hdr_color.rgb + vec3(1.0));
+    let tone_mapped_rgb = hdr_color.rgb;
     
     return vec4<f32>(tone_mapped_rgb, 1.0);
 }

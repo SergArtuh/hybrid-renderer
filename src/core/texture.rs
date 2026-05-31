@@ -37,7 +37,7 @@ impl DefaultTextures {
 
         let black_metallic = TextureBuilder::new(device, queue)
             .with_label("black_metallic_fallback")
-            .from_image(create_color_img(00, 255, 0, 255))
+            .from_image(create_color_img(255, 255, 255, 255))
             .build();
 
         let cubemap = TextureBuilder::new(device, queue)

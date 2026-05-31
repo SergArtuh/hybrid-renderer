@@ -212,6 +212,15 @@ impl<'ctx> AssetManager<'ctx> {
                 metallic_roughness: None,
                 occlusion: None,
                 emissive: None,
+
+                base_color_factor: pbr.base_color_factor(),
+                emissive_factor: gltf_material.emissive_factor(),
+                normal_scale: 1.0,
+                roughness_factor: pbr.roughness_factor(),
+                metallic_factor: pbr.metallic_factor(),
+                occlusion_strength: 1.0,
+                clearcoat_factor: 0.0,
+                clearcoat_roughness: 0.0,
             };
 
             if let Some(texture_info) = pbr.base_color_texture() {
@@ -227,16 +236,36 @@ impl<'ctx> AssetManager<'ctx> {
             if let Some(texture_info) = gltf_material.normal_texture() {
                 let texture_index = texture_info.texture().source().index();
                 desc.normal = Some(Arc::clone(&textures[texture_index]));
+                desc.normal_scale = texture_info.scale();
             }
 
             if let Some(texture_info) = gltf_material.occlusion_texture() {
                 let texture_index = texture_info.texture().source().index();
                 desc.occlusion = Some(Arc::clone(&textures[texture_index]));
+                desc.occlusion_strength = texture_info.strength();
             }
 
             if let Some(texture_info) = gltf_material.emissive_texture() {
                 let texture_index = texture_info.texture().source().index();
                 desc.emissive = Some(Arc::clone(&textures[texture_index]));
+            }
+
+            if let Some(extensions) = gltf_material.extensions() {
+                if let Some(clearcoat_value) = extensions.get("KHR_materials_clearcoat") {
+                    if let Some(clearcoat_obj) = clearcoat_value.as_object() {
+                        if let Some(factor) = clearcoat_obj.get("clearcoatFactor") {
+                            desc.clearcoat_factor = factor.as_f64().unwrap_or(1.0) as f32;
+                        } else {
+                            desc.clearcoat_factor = 1.0;
+                        }
+
+                        if let Some(roughness) = clearcoat_obj.get("clearcoatRoughnessFactor") {
+                            desc.clearcoat_roughness = roughness.as_f64().unwrap_or(0.0) as f32;
+                        } else {
+                            desc.clearcoat_roughness = 0.0;
+                        }
+                    }
+                }
             }
 
             let material = Arc::new(Material::Physical(
@@ -275,6 +304,16 @@ impl<'ctx> AssetManager<'ctx> {
             }
         }
 
+        let mut is_srgb_image = vec![false; images.len()];
+        for material in document.materials() {
+            if let Some(tex_info) = material.pbr_metallic_roughness().base_color_texture() {
+                is_srgb_image[tex_info.texture().source().index()] = true;
+            }
+            if let Some(tex_info) = material.emissive_texture() {
+                is_srgb_image[tex_info.texture().source().index()] = true;
+            }
+        }
+
         images
             .iter()
             .enumerate()
@@ -295,15 +334,14 @@ impl<'ctx> AssetManager<'ctx> {
                     gltf::image::Format::R8G8B8A8 => ComponentPrecision::U8,
                     _ => panic!("Unsupported format: {:?}", img_data.format),
                 };
+                let builder = TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
+                    .from_raw(&img_data.pixels, img_data.width, img_data.height)
+                    .with_label(label)
+                    .with_channels(channels)
+                    .with_srgb(is_srgb_image[i])
+                    .with_precision(precision);
 
-                Arc::new(
-                    TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
-                        .from_raw(&img_data.pixels, img_data.width, img_data.height)
-                        .with_label(label)
-                        .with_channels(channels)
-                        .with_precision(precision)
-                        .build(),
-                )
+                Arc::new(builder.build())
             })
             .collect()
     }

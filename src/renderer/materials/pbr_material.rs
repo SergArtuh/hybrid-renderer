@@ -1,12 +1,14 @@
 use std::sync::Arc;
 
 use anyhow::Context;
+use wgpu::util::DeviceExt;
 
 use crate::{
     core::{
         material::{MaterialDomain, MaterialTrait, MaterialType, PhysicalMaterial},
         render_context::RenderContext,
         texture::Texture,
+        uniforms::PbrMaterialUniforms,
         vertex::Vertex,
     },
     renderer::materials::{DEFAULT_DEPTH_FORMAT, PipelineVisitorEnvironment},
@@ -18,6 +20,14 @@ pub struct PhysicalMaterialDescriptor {
     pub metallic_roughness: Option<Arc<Texture>>,
     pub occlusion: Option<Arc<Texture>>,
     pub emissive: Option<Arc<Texture>>,
+    pub base_color_factor: [f32; 4],
+    pub emissive_factor: [f32; 3],
+    pub normal_scale: f32,
+    pub roughness_factor: f32,
+    pub metallic_factor: f32,
+    pub occlusion_strength: f32,
+    pub clearcoat_factor: f32,
+    pub clearcoat_roughness: f32,
 }
 
 impl MaterialTrait for PhysicalMaterial {
@@ -75,6 +85,23 @@ impl PbrMaterialDefinition {
             .map(|t| Arc::clone(&t.view))
             .unwrap_or_else(|| Arc::clone(&render_context.default_textures.white));
 
+        let uniform = PbrMaterialUniforms {
+            base_color_factor: desc.base_color_factor,
+            emissive_and_scale: [
+                desc.emissive_factor[0],
+                desc.emissive_factor[1],
+                desc.emissive_factor[2],
+                desc.normal_scale,
+            ],
+            pbr_factors: [
+                desc.roughness_factor,
+                desc.metallic_factor,
+                desc.occlusion_strength,
+                desc.clearcoat_factor,
+            ],
+            clearcoat_factors: [desc.clearcoat_roughness, 0.0, 0.0, 0.0],
+        };
+
         let bind_group = render_context
             .device
             .create_bind_group(&wgpu::BindGroupDescriptor {
@@ -104,6 +131,21 @@ impl PbrMaterialDefinition {
                     wgpu::BindGroupEntry {
                         binding: 5,
                         resource: wgpu::BindingResource::Sampler(&render_context.common_sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 6,
+                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer: &render_context.device.create_buffer_init(
+                                &wgpu::util::BufferInitDescriptor {
+                                    label: Some("PbrMaterialUniforms"),
+                                    contents: bytemuck::cast_slice(&[uniform]),
+                                    usage: wgpu::BufferUsages::UNIFORM
+                                        | wgpu::BufferUsages::COPY_DST,
+                                },
+                            ),
+                            offset: 0,
+                            size: None,
+                        }),
                     },
                 ],
             });
@@ -193,6 +235,17 @@ impl PbrMaterialDefinition {
                             binding: 5,
                             visibility: wgpu::ShaderStages::FRAGMENT,
                             ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                            count: None,
+                        },
+                        // Binding 6: PBR Material Uniforms
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 6,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Uniform,
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
                             count: None,
                         },
                     ],

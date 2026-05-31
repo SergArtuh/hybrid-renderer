@@ -382,6 +382,16 @@ impl<'a> TextureBuilder<'a> {
                 let (w, h) = rgba.dimensions();
                 (w, h, RawTextureData::U8(rgba.into_raw()))
             }
+            image::ColorType::La8 => {
+                let luma = img.to_luma_alpha8();
+                let (w, h) = luma.dimensions();
+                (w, h, RawTextureData::U8(luma.into_raw()))
+            }
+            image::ColorType::L8 => {
+                let luma = img.to_luma8();
+                let (w, h) = luma.dimensions();
+                (w, h, RawTextureData::U8(luma.into_raw()))
+            }
             _ => panic!("Unsupported color type: {:?}", color_type),
         }
     }
