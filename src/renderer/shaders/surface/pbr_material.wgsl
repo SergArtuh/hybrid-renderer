@@ -44,6 +44,9 @@ struct MaterialData {
 @group(2) @binding(4) var t_emissive: texture_2d<f32>;
 @group(2) @binding(5) var common_sampler: sampler;
 @group(2) @binding(6) var<uniform> material_data: MaterialData;
+@group(2) @binding(7) var t_clearcoat: texture_2d<f32>;
+@group(2) @binding(8) var t_clearcoat_roughness: texture_2d<f32>;
+@group(2) @binding(9) var t_clearcoat_normal: texture_2d<f32>;
 
 const PI: f32 = 3.14159265359;
 const PI_INV: f32 = 1.0 / PI;
@@ -110,8 +113,8 @@ fn fs_main(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @location
     let roughness_factor = material_data.pbr_factors.x;
     let metallic_factor = material_data.pbr_factors.y;
     let occlusion_strength = material_data.pbr_factors.b;
-    let cc_factor = material_data.pbr_factors.a;
-    let cc_roughness = material_data.clearcoat_factors.r;
+    let cc_factor = textureSample(t_clearcoat, common_sampler, in.uv).r * material_data.pbr_factors.a;
+    let cc_roughness = textureSample(t_clearcoat_roughness, common_sampler, in.uv).r * material_data.clearcoat_factors.r;
 
     let roughness = roughness_sqrt * roughness_factor;
     let metalness  = orm.b * metallic_factor;
