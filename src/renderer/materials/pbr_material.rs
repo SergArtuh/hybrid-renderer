@@ -28,6 +28,9 @@ pub struct PhysicalMaterialDescriptor {
     pub occlusion_strength: f32,
     pub clearcoat_factor: f32,
     pub clearcoat_roughness: f32,
+    pub clearcoat_texture: Option<Arc<Texture>>,
+    pub clearcoat_roughness_texture: Option<Arc<Texture>>,
+    pub clearcoat_normal_texture: Option<Arc<Texture>>,
 }
 
 impl MaterialTrait for PhysicalMaterial {
@@ -85,6 +88,21 @@ impl PbrMaterialDefinition {
             .map(|t| Arc::clone(&t.view))
             .unwrap_or_else(|| Arc::clone(&render_context.default_textures.white));
 
+        let clearcoat = desc
+            .clearcoat_texture
+            .map(|t| Arc::clone(&t.view))
+            .unwrap_or_else(|| Arc::clone(&render_context.default_textures.white));
+
+        let clearcoat_roughness = desc
+            .clearcoat_roughness_texture
+            .map(|t| Arc::clone(&t.view))
+            .unwrap_or_else(|| Arc::clone(&render_context.default_textures.black));
+
+        let clearcoat_normal = desc
+            .clearcoat_normal_texture
+            .map(|t| Arc::clone(&t.view))
+            .unwrap_or_else(|| Arc::clone(&render_context.default_textures.normal));
+
         let uniform = PbrMaterialUniforms {
             base_color_factor: desc.base_color_factor,
             emissive_and_scale: [
@@ -99,7 +117,7 @@ impl PbrMaterialDefinition {
                 desc.occlusion_strength,
                 desc.clearcoat_factor,
             ],
-            clearcoat_factors: [desc.clearcoat_roughness, 0.0, 0.0, 0.0],
+            clearcoat_factors: [desc.clearcoat_factor, desc.clearcoat_roughness, 0.0, 0.0],
         };
 
         let bind_group = render_context
@@ -146,6 +164,18 @@ impl PbrMaterialDefinition {
                             offset: 0,
                             size: None,
                         }),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 7,
+                        resource: wgpu::BindingResource::TextureView(&clearcoat),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 8,
+                        resource: wgpu::BindingResource::TextureView(&clearcoat_roughness),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 9,
+                        resource: wgpu::BindingResource::TextureView(&clearcoat_normal),
                     },
                 ],
             });
@@ -245,6 +275,39 @@ impl PbrMaterialDefinition {
                                 ty: wgpu::BufferBindingType::Uniform,
                                 has_dynamic_offset: false,
                                 min_binding_size: None,
+                            },
+                            count: None,
+                        },
+                        // Binding 7: Clearcoat
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 7,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                                multisampled: false,
+                            },
+                            count: None,
+                        },
+                        // Binding 8: Clearcoat Roughness
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 8,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                                multisampled: false,
+                            },
+                            count: None,
+                        },
+                        // Binding 9: Clearcoat Normal
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 9,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Texture {
+                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                                view_dimension: wgpu::TextureViewDimension::D2,
+                                multisampled: false,
                             },
                             count: None,
                         },

@@ -1,6 +1,9 @@
 use wgpu::util::DeviceExt;
 
 use crate::assets::skydome::Skydome;
+use crate::assets::util::gltf_extended_decorator::{
+    ClearcoatFactor, ClearcoatRoughnessFactor, ExtendedMaterialDecorator,
+};
 use crate::core::material::{Material, PhysicalMaterial, SkydomeEnvironmentMaterial};
 use crate::core::mesh::{Mesh, MeshData};
 use crate::core::model_node::ModelNode;
@@ -63,7 +66,7 @@ impl<'ctx> AssetManager<'ctx> {
 
         for scene in document.scenes() {
             for node in scene.nodes() {
-                let root_node = self.load_node(&node, &buffers, &textures)?;
+                let root_node = self.load_node(&node, &buffers, &textures, &document)?;
                 gltf_asset.scene_roots.push(root_node);
             }
         }
@@ -177,6 +180,7 @@ impl<'ctx> AssetManager<'ctx> {
         node: &gltf::Node,
         buffers: &[gltf::buffer::Data],
         textures: &Vec<Arc<Texture>>,
+        document: &gltf::Document,
     ) -> anyhow::Result<Arc<ModelNode>> {
         let local_matrix = glam::Mat4::from_cols_array_2d(&node.transform().matrix());
 
@@ -203,7 +207,8 @@ impl<'ctx> AssetManager<'ctx> {
 
             let mesh = Arc::new(Mesh::from_data(&self.ctx.device, &mesh_data));
 
-            let gltf_material = primitive.material();
+            let gltf_material_base = primitive.material();
+            let gltf_material = ExtendedMaterialDecorator::new(gltf_material_base, &document);
             let pbr = gltf_material.pbr_metallic_roughness();
 
             let mut desc = PhysicalMaterialDescriptor {
@@ -212,7 +217,6 @@ impl<'ctx> AssetManager<'ctx> {
                 metallic_roughness: None,
                 occlusion: None,
                 emissive: None,
-
                 base_color_factor: pbr.base_color_factor(),
                 emissive_factor: gltf_material.emissive_factor(),
                 normal_scale: 1.0,
@@ -221,6 +225,9 @@ impl<'ctx> AssetManager<'ctx> {
                 occlusion_strength: 1.0,
                 clearcoat_factor: 0.0,
                 clearcoat_roughness: 0.0,
+                clearcoat_texture: None,
+                clearcoat_roughness_texture: None,
+                clearcoat_normal_texture: None,
             };
 
             if let Some(texture_info) = pbr.base_color_texture() {
@@ -250,21 +257,26 @@ impl<'ctx> AssetManager<'ctx> {
                 desc.emissive = Some(Arc::clone(&textures[texture_index]));
             }
 
-            if let Some(extensions) = gltf_material.extensions() {
-                if let Some(clearcoat_value) = extensions.get("KHR_materials_clearcoat") {
-                    if let Some(clearcoat_obj) = clearcoat_value.as_object() {
-                        if let Some(factor) = clearcoat_obj.get("clearcoatFactor") {
-                            desc.clearcoat_factor = factor.as_f64().unwrap_or(1.0) as f32;
-                        } else {
-                            desc.clearcoat_factor = 1.0;
-                        }
+            if let Some(ref cc) = gltf_material.clearcoat {
+                let ClearcoatFactor(factor) = cc.clearcoat_factor;
+                let ClearcoatRoughnessFactor(roughness) = cc.clearcoat_roughness_factor;
 
-                        if let Some(roughness) = clearcoat_obj.get("clearcoatRoughnessFactor") {
-                            desc.clearcoat_roughness = roughness.as_f64().unwrap_or(0.0) as f32;
-                        } else {
-                            desc.clearcoat_roughness = 0.0;
-                        }
-                    }
+                desc.clearcoat_factor = factor;
+                desc.clearcoat_roughness = roughness;
+
+                if let Some(ref tex_info) = cc.clearcoat_texture {
+                    let texture_index = tex_info.texture.source().index();
+                    desc.clearcoat_texture = Some(Arc::clone(&textures[texture_index]));
+                }
+
+                if let Some(ref rough_info) = cc.clearcoat_roughness_texture {
+                    let texture_index = rough_info.texture.source().index();
+                    desc.clearcoat_roughness_texture = Some(Arc::clone(&textures[texture_index]));
+                }
+
+                if let Some(ref normal_info) = cc.clearcoat_normal_texture {
+                    let texture_index = normal_info.texture.source().index();
+                    desc.clearcoat_normal_texture = Some(Arc::clone(&textures[texture_index]));
                 }
             }
 
@@ -279,7 +291,7 @@ impl<'ctx> AssetManager<'ctx> {
 
         let mut children = Vec::new();
         for child in node.children() {
-            children.push(self.load_node(&child, buffers, textures)?);
+            children.push(self.load_node(&child, buffers, textures, &document)?);
         }
 
         Ok(Arc::new(ModelNode {

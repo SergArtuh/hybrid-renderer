@@ -65,6 +65,9 @@ impl<'a> MaterialFactory<'a> {
                 occlusion_strength: 1.0,
                 clearcoat_factor: 0.0,
                 clearcoat_roughness: 0.0,
+                clearcoat_texture: None,
+                clearcoat_roughness_texture: None,
+                clearcoat_normal_texture: None,
             }),
         )
     }
