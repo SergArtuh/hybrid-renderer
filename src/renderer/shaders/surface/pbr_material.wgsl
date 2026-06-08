@@ -1,15 +1,18 @@
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
-    @location(2) uv: vec2<f32>,
+    @location(2) tangent: vec4<f32>,
+    @location(3) uv: vec2<f32>,
 };
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
-    @location(0)  normal: vec3<f32>,
-    @location(1)  uv: vec2<f32>,
-    @location(2) world_position: vec3<f32>,
-};
+    @location(0) world_position: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) tangent: vec3<f32>,
+    @location(3) bitangent: vec3<f32>,
+    @location(4) uv: vec2<f32>,
+}
 
 struct CameraUniform {
     proj_view: mat4x4<f32>,
@@ -72,9 +75,17 @@ fn vs_main(
 ) -> VertexOutput {
     var out: VertexOutput;
     let world_pos = model.model_matrix * vec4<f32>(vertex.position, 1.0);
+
+    let normal_w = normalize((model.normal_matrix * vec4<f32>(vertex.normal, 0.0)).xyz);
+    let tangent_w = normalize((model.model_matrix * vec4<f32>(vertex.tangent.xyz, 0.0)).xyz);
+    let bitangent_w = normalize(cross(normal_w, tangent_w)) * vertex.tangent.w; 
+
     out.world_position = world_pos.xyz;
     out.clip_position = camera.proj_view * world_pos;
-    out.normal = normalize((model.normal_matrix * vec4<f32>(vertex.normal, 0.0)).xyz);
+    out.normal = normal_w;
+    out.tangent = tangent_w;
+    out.bitangent = bitangent_w;
+
     out.uv = vertex.uv;
     return out;
 }
@@ -119,7 +130,16 @@ fn fs_main(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @location
     let roughness = roughness_sqrt * roughness_factor;
     let metalness  = orm.b * metallic_factor;
 
+    let normal_map = textureSample(t_normal, common_sampler, in.uv).rgb;
+    let normal_texture_space = normalize(normal_map*2.0 -1.0 );
+
     var N = normalize(in.normal);
+    let T = normalize(in.tangent);
+    let B = normalize(in.bitangent);
+
+    let TBN = mat3x3<f32>(T, B, N);
+    N = normalize(TBN * normal_texture_space);
+
     let V = normalize(camera.position.xyz - in.world_position);
     let R = normalize(reflect(-V, N));
 
@@ -141,100 +161,7 @@ fn fs_main(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @location
 
     let color = diffuse_color * kD + specular_color * kS;
 
-
-
-    /*/
-    let horizon_occlusion = clamp(1.0 - roughness * roughness * c1, 0.0, 1.0);
-    
-    let specular = hdr_color_specular * env_brdf * horizon_occlusion;
-
-    let kS = F0 + (max(vec3<f32>(c0), F0) - F0) * c1;
-    let kD = (vec3<f32>(1.0) - kS) * (1.0 - metallic);
-    let diffuse = hdr_color_irradiance * base_color * kD;
-
-    let ao = textureSample(t_occlusion, common_sampler, in.uv).r;
-    let ambient_occlusion = mix(1.0, ao, occlusion_strength);
-    let base_layer_color = (diffuse + specular) * ambient_occlusion;
-    
-    let cc_lod = cc_roughness * specular_mip_count;
-    let cc_specular = textureSampleLevel(t_specular, s_texture, R, cc_lod).rgb;
-    let cc_fresnel = F0_CLEARCOAT + (1.0 - F0_CLEARCOAT) * pow(1.0 - VoN, 5.0);
-    let hdr_color = base_layer_color * (1.0 - cc_fresnel * cc_factor) + (cc_specular * cc_fresnel * cc_factor);
-    
-    let exposure = 1.0;
-    let color_exposed = hdr_color * exposure;
-    
-    let color_tonemapped = color_exposed / (color_exposed + vec3<f32>(1.0));
-     */
     
     let gamma_corrected = pow(color, vec3(INV_GAMMA));
     return vec4<f32>(color, 1.0);
 }
-
-
-/* 
-
-@fragment
-fn fs_main(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @location(0) vec4<f32> {
-    //let base_color = textureSample(t_base_color, common_sampler, in.uv).rgb * material_data.base_color_factor.rgb;
-    let base_color = textureSample(t_base_color, common_sampler, in.uv).rgb * material_data.base_color_factor.rgb;
-    let orm = textureSample(t_metallic_roughness, common_sampler, in.uv);
-    
-    let roughness_factor = material_data.pbr_factors.x;
-    let metallic_factor = material_data.pbr_factors.y;
-    let occlusion_strength = material_data.pbr_factors.b;
-    let cc_factor = material_data.pbr_factors.a;
-    let cc_roughness = material_data.clearcoat_factors.r;
-    //let cc_roughness = 0.04;
-
-    let roughness = orm.g * roughness_factor;
-    let metallic  = orm.b * metallic_factor;
-
-    var N = normalize(in.normal);
-    let view_dir = normalize(camera.position.xyz - in.world_position);
-    let reflect_dir = normalize(reflect(-view_dir, N));
-    
-    let hdr_color_irradiance = textureSample(t_irradiance, s_texture, N).rgb;
-    
-    //let max_mip = f32(textureNumLevels(t_specular) - 1u);
-    let max_mip = f32(min(textureNumLevels(t_specular) - 1u, 10u));
-    
-    let lod = roughness * max_mip;
-    let hdr_color_specular = textureSampleLevel(t_specular, s_texture, reflect_dir, lod).rgb;
-    
-    let VoN = max(dot(view_dir, N), 0.0);
-    let F0 = mix(vec3<f32>(0.04), base_color, metallic);
-
-    let c0 = 1.0 - roughness;
-    let c1 = pow(1.0 - VoN, 5.0);
-    let env_brdf = EnvBRDFApprox(F0, roughness, VoN);
-
-    let horizon_occlusion = clamp(1.0 - roughness * roughness * c1, 0.0, 1.0);
-    
-    let specular = hdr_color_specular * env_brdf * horizon_occlusion;
-
-    let kS = F0 + (max(vec3<f32>(c0), F0) - F0) * c1;
-    let kD = (vec3<f32>(1.0) - kS) * (1.0 - metallic);
-    let diffuse = hdr_color_irradiance * base_color * kD;
-
-    let ao = textureSample(t_occlusion, common_sampler, in.uv).r;
-    let ambient_occlusion = mix(1.0, ao, occlusion_strength);
-    let base_layer_color = (diffuse + specular) * ambient_occlusion;
-    
-    let cc_lod = cc_roughness * max_mip;
-    let cc_specular = textureSampleLevel(t_specular, s_texture, reflect_dir, cc_lod).rgb;
-    let cc_fresnel = F0_CLEARCOAT + (1.0 - F0_CLEARCOAT) * pow(1.0 - VoN, 5.0);
-    let hdr_color = base_layer_color * (1.0 - cc_fresnel * cc_factor) + (cc_specular * cc_fresnel * cc_factor);
-    //let hdr_color = base_layer_color;
-    
-    let exposure = 1.0;
-    let color_exposed = hdr_color * exposure;
-    
-    let color_tonemapped = color_exposed / (color_exposed + vec3<f32>(1.0));
-    
-    let color = color_exposed;
-    
-    return vec4<f32>(color, 1.0);
-}
-
-*/

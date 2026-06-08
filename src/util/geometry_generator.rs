@@ -8,6 +8,7 @@ impl MeshUtil {
     pub fn new_sphere(radius: f32, latitude_count: u32, longitude_count: u32) -> MeshData {
         let mut vertices = Vec::new();
         let mut normals = Vec::new();
+        let mut tangents = Vec::new();
         let mut uvs = Vec::new();
         let mut indices = Vec::new();
 
@@ -26,6 +27,7 @@ impl MeshUtil {
                 let z = sin_phi * sin_theta;
 
                 normals.push([x, y, z]);
+                tangents.push([y, x, z, 1.0]);
 
                 vertices.push([x * radius, y * radius, z * radius]);
 
@@ -52,6 +54,7 @@ impl MeshUtil {
         MeshData {
             vertices,
             normals,
+            tangents,
             uvs,
             indices,
         }
@@ -60,6 +63,7 @@ impl MeshUtil {
     pub fn new_cube(size: f32) -> MeshData {
         let mut vertices = Vec::with_capacity(24);
         let mut normals = Vec::with_capacity(24);
+        let mut tangents = Vec::with_capacity(24);
         let mut uvs = Vec::with_capacity(24);
         let mut indices = Vec::with_capacity(36);
 
@@ -134,6 +138,7 @@ impl MeshUtil {
             for (i, &pos) in face_verts.iter().enumerate() {
                 vertices.push(pos);
                 normals.push(*normal);
+                tangents.push([normal[1], normal[0], normal[2], 1.0]);
 
                 match i {
                     0 => uvs.push([0.0, 1.0]),
@@ -158,6 +163,7 @@ impl MeshUtil {
         MeshData {
             vertices,
             normals,
+            tangents,
             uvs,
             indices,
         }
@@ -167,6 +173,7 @@ impl MeshUtil {
         MeshData {
             vertices: vec![],
             normals: vec![],
+            tangents: vec![],
             uvs: vec![],
             indices: vec![],
         }

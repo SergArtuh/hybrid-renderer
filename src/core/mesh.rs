@@ -5,6 +5,7 @@ use crate::core::vertex::Vertex;
 pub struct MeshData {
     pub vertices: Vec<[f32; 3]>,
     pub normals: Vec<[f32; 3]>,
+    pub tangents: Vec<[f32; 4]>,
     pub uvs: Vec<[f32; 2]>,
     pub indices: Vec<u32>,
 }
@@ -17,6 +18,7 @@ impl MeshData {
             .map(|(i, &position)| Vertex {
                 position,
                 normal: self.normals[i],
+                tangent: self.tangents[i],
                 uv: self.uvs[i],
             })
             .collect()

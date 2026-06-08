@@ -195,6 +195,10 @@ impl<'ctx> AssetManager<'ctx> {
                     .read_normals()
                     .map(|i| i.collect())
                     .unwrap_or_else(|| vec![[0.0, 1.0, 0.0]; vertex_count]),
+                tangents: reader
+                    .read_tangents()
+                    .map(|i| i.collect())
+                    .unwrap_or_else(|| vec![[1.0, 0.0, 0.0, 1.0]; vertex_count]),
                 uvs: reader
                     .read_tex_coords(0)
                     .map(|i| i.into_f32().collect())
