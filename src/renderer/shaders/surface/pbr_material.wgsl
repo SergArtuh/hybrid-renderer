@@ -119,11 +119,13 @@ fn processed_specular(R: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
 fn fs_main(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @location(0) vec4<f32> {
     let base_color = textureSample(t_base_color, common_sampler, in.uv).rgb * material_data.base_color_factor.rgb;
     let orm = textureSample(t_metallic_roughness, common_sampler, in.uv);
+    let emissive_color = textureSample(t_emissive, common_sampler, in.uv).rgb;
     
     let roughness_sqrt = orm.g;
     let roughness_factor = material_data.pbr_factors.x;
     let metallic_factor = material_data.pbr_factors.y;
     let occlusion_strength = material_data.pbr_factors.b;
+    let emissive_factor = material_data.emissive_and_scale.rgb;
     let cc_factor = textureSample(t_clearcoat, common_sampler, in.uv).r * material_data.pbr_factors.a;
     let cc_roughness = textureSample(t_clearcoat_roughness, common_sampler, in.uv).r * material_data.clearcoat_factors.r;
 
@@ -159,7 +161,7 @@ fn fs_main(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @location
 	let kD = vec3(1.0f, 1.0f, 1.0f) - kS;
 
 
-    let color = diffuse_color * kD + specular_color * kS;
+    let color = emissive_color * emissive_factor + diffuse_color * kD + specular_color * kS;
 
     
     let gamma_corrected = pow(color, vec3(INV_GAMMA));

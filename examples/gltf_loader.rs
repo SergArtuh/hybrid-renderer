@@ -107,8 +107,8 @@ pub fn run() {
 
     let asset_manager = renderer.get_asset_manager(&render_context);
     let models = asset_manager
-        .load_gltf_models("assets/models/porsche.glb")
-        //.load_gltf_models("assets/models/ClearCoatTest.glb")
+        //.load_gltf_models("assets/models/porsche.glb")
+        .load_gltf_models("assets/models/ClearCoatTest.glb")
         .unwrap();
 
     for model_node in &models.scene_roots {
@@ -120,7 +120,7 @@ pub fn run() {
     let skydome = asset_manager
         //.load_skybox("assets/modern_buildings_night_1k.exr")
         //.load_skybox("assets/modern_buildings_night_8k.exr")
-        .load_skydome("assets/zwartkops_curve_sunset_4k.exr", 150.0, 0.95)
+        .load_skydome("assets/zwartkops_curve_sunset_4k.exr", 100.0, 0.95)
         .unwrap();
     stage.set_skydome(skydome);
 
