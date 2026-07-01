@@ -1,11 +1,14 @@
 use glam::Vec3;
 use hybrid_renderer::{
-    assets::{camera::Camera, model::Model},
+    assets::{asset_manager::AssetManager, camera::Camera, model::Model},
     core::{
         material::Material, mesh::Mesh, model_node::ModelNode, render_context::RenderContext,
         texture_builder::TextureBuilder,
     },
-    renderer::{Renderer, materials::sprite_material::SpriteMaterialDescriptor},
+    renderer::{
+        Renderer, RenderingEnvironment,
+        materials::{MaterialFactory, sprite_material::SpriteMaterialDescriptor},
+    },
     stage::Stage,
     util::geometry_generator::MeshUtil,
 };
@@ -95,32 +98,34 @@ pub fn run() {
     file.read_to_end(&mut diffuse_bytes).unwrap();
 
     let render_context = RenderContext::new(device, queue, surface, config);
-
-    let mut renderer = Renderer::new(&render_context);
+    let mut render_env = RenderingEnvironment::new(render_context);
+    let mut renderer = Renderer::new(&mut render_env);
 
     let sprite_texture = Arc::new(
-        TextureBuilder::new(&render_context.device, &render_context.queue)
-            .from_bytes(&diffuse_bytes)
-            .with_filter(wgpu::FilterMode::Nearest, wgpu::FilterMode::Nearest)
-            .build(),
+        TextureBuilder::new(
+            &render_env.render_context.device,
+            &render_env.render_context.queue,
+        )
+        .from_bytes(&diffuse_bytes)
+        .with_filter(wgpu::FilterMode::Nearest, wgpu::FilterMode::Nearest)
+        .build(),
     );
 
-    let sprite_material = renderer
-        .get_material_factory(&render_context)
-        .create_material(SpriteMaterialDescriptor {
+    let sprite_material =
+        MaterialFactory::new(&render_env).create_material(SpriteMaterialDescriptor {
             texture: sprite_texture,
             grid_size: (8, 8),
         });
 
     let mesh_data = MeshUtil::new_procedural_quad();
-    let mesh = Mesh::from_data(&render_context.device, &mesh_data);
+    let mesh = Mesh::from_data(&render_env.render_context.device, &mesh_data);
     let model_node = Arc::new(ModelNode::new(
         mesh,
         hybrid_renderer::core::material::Material::Sprite(sprite_material),
     ));
     let model = Model::new(model_node.clone(), glam::Mat4::IDENTITY);
 
-    let asset_manager = renderer.get_asset_manager(&render_context);
+    let asset_manager = AssetManager::new(&render_env);
     let skydome = asset_manager
         .load_skydome("assets/modern_buildings_night_1k.exr", 150.0, 0.95)
         .unwrap();
@@ -166,12 +171,12 @@ pub fn run() {
 
                 if let Some(material) = model_node.material.as_deref() {
                     if let Material::Sprite(sprite) = material {
-                        sprite.set_frame(frame_count, &render_context.queue);
+                        sprite.set_frame(frame_count, &render_env.render_context.queue);
                     }
                 }
 
                 let frame_data = stage.make_frame_data();
-                renderer.render(&render_context, &frame_data);
+                renderer.render(&mut render_env, &frame_data);
             }
             Event::AboutToWait => {
                 window.request_redraw();

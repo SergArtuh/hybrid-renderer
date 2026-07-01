@@ -91,9 +91,8 @@ impl SkydomeMaterialDefinition {
 
 impl SkydomeMaterialDefinition {
     pub fn create_pipeline(
-        environment: &PipelineVisitorEnvironment<'_>,
+        environment: &mut PipelineVisitorEnvironment<'_>,
     ) -> Result<wgpu::RenderPipeline, anyhow::Error> {
-        let mut interface = environment.layout.borrow_mut();
         let render_context = environment.context;
         let pipeline_definition = environment.pipeline_definition;
         render_context
@@ -129,7 +128,11 @@ impl SkydomeMaterialDefinition {
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: None,
-                    bind_group_layouts: &[&interface.global, &interface.model, &material],
+                    bind_group_layouts: &[
+                        &environment.layout.global,
+                        &environment.layout.model,
+                        &material,
+                    ],
                     push_constant_ranges: &[],
                 });
 
@@ -178,11 +181,13 @@ impl SkydomeMaterialDefinition {
                     multiview: None,
                 });
 
-        interface
+        environment
+            .layout
             .pipeline_layouts
             .insert(pipeline_definition.material_type, pipeline_layout);
 
-        interface
+        environment
+            .layout
             .materials
             .insert(pipeline_definition.material_type, Arc::new(material));
 

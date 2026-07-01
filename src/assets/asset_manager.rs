@@ -7,10 +7,10 @@ use crate::assets::util::gltf_extended_decorator::{
 use crate::core::material::{Material, PhysicalMaterial, SkydomeEnvironmentMaterial};
 use crate::core::mesh::{Mesh, MeshData};
 use crate::core::model_node::ModelNode;
-use crate::core::render_context::RenderContext;
 use crate::core::texture::Texture;
 use crate::core::texture_builder::{ComponentPrecision, TextureBuilder, TextureChannels};
 use crate::core::uniforms::SpecularPrefilterUniform;
+use crate::renderer::RenderingEnvironment;
 use crate::renderer::compute_task::{
     ComputeTaskFactory, DiffuseIrradianceTask, DiffuseIrradianceTaskDescriptor,
     EquirectToCubemapTask, EquirectToCubemapTaskDescriptor, MipmapGeneratorTask,
@@ -29,23 +29,13 @@ pub struct GltfAsset {
     pub scene_roots: Vec<Arc<ModelNode>>,
 }
 
-pub struct AssetManager<'ctx> {
-    pub ctx: &'ctx RenderContext<'ctx>,
-    pub material_factory: MaterialFactory<'ctx>,
-    pub compute_task_factory: ComputeTaskFactory<'ctx>,
+pub struct AssetManager<'a> {
+    render_env: &'a RenderingEnvironment<'a>,
 }
 
-impl<'ctx> AssetManager<'ctx> {
-    pub fn new(
-        ctx: &'ctx RenderContext<'ctx>,
-        material_factory: MaterialFactory<'ctx>,
-        compute_task_factory: ComputeTaskFactory<'ctx>,
-    ) -> Self {
-        Self {
-            ctx,
-            material_factory,
-            compute_task_factory,
-        }
+impl<'a> AssetManager<'a> {
+    pub fn new(render_env: &'a RenderingEnvironment) -> Self {
+        Self { render_env }
     }
 
     pub fn load_gltf_models(&self, path: impl AsRef<Path>) -> anyhow::Result<GltfAsset> {
@@ -64,9 +54,11 @@ impl<'ctx> AssetManager<'ctx> {
 
         let textures = self.load_textures(&document, &images);
 
+        let material_factory = MaterialFactory::new(&self.render_env);
         for scene in document.scenes() {
             for node in scene.nodes() {
-                let root_node = self.load_node(&node, &buffers, &textures, &document)?;
+                let root_node =
+                    self.load_node(&node, &buffers, &textures, &document, &material_factory)?;
                 gltf_asset.scene_roots.push(root_node);
             }
         }
@@ -86,88 +78,102 @@ impl<'ctx> AssetManager<'ctx> {
         file.read_to_end(&mut diffuse_bytes).unwrap();
 
         let sprite_texture = Arc::new(
-            TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
-                .from_bytes(&diffuse_bytes)
-                .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
-                .with_filter(wgpu::FilterMode::Linear, wgpu::FilterMode::Linear)
-                .build(),
+            TextureBuilder::new(
+                &self.render_env.render_context.device,
+                &self.render_env.render_context.queue,
+            )
+            .from_bytes(&diffuse_bytes)
+            .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+            .with_filter(wgpu::FilterMode::Linear, wgpu::FilterMode::Linear)
+            .build(),
         );
 
         let mesh = Arc::new(Mesh::from_data(
-            &self.ctx.device,
+            &self.render_env.render_context.device,
             &MeshUtil::new_procedural_quad(),
         ));
 
         let cubemap_texture_result = Arc::new(
-            TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
-                .with_label("equirect_cubemap")
-                .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
-                .with_size(1024, 1024)
-                .as_cubemap()
-                .with_usage(
-                    wgpu::TextureUsages::TEXTURE_BINDING
-                        | wgpu::TextureUsages::STORAGE_BINDING
-                        | wgpu::TextureUsages::COPY_DST
-                        | wgpu::TextureUsages::COPY_SRC,
-                )
-                .build(),
+            TextureBuilder::new(
+                &self.render_env.render_context.device,
+                &self.render_env.render_context.queue,
+            )
+            .with_label("equirect_cubemap")
+            .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+            .with_size(1024, 1024)
+            .as_cubemap()
+            .with_usage(
+                wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::STORAGE_BINDING
+                    | wgpu::TextureUsages::COPY_DST
+                    | wgpu::TextureUsages::COPY_SRC,
+            )
+            .build(),
         );
 
         let irradiance_cubemap = Arc::new(
-            TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
-                .with_label("diffuse_irradiance")
-                .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
-                .with_size(16, 16)
-                .as_cubemap()
-                .with_usage(
-                    wgpu::TextureUsages::TEXTURE_BINDING
-                        | wgpu::TextureUsages::STORAGE_BINDING
-                        | wgpu::TextureUsages::COPY_DST,
-                )
-                .build(),
+            TextureBuilder::new(
+                &self.render_env.render_context.device,
+                &self.render_env.render_context.queue,
+            )
+            .with_label("diffuse_irradiance")
+            .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+            .with_size(16, 16)
+            .as_cubemap()
+            .with_usage(
+                wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::STORAGE_BINDING
+                    | wgpu::TextureUsages::COPY_DST,
+            )
+            .build(),
         );
 
-        let equirect_to_cubemap_task = self
-            .compute_task_factory
-            .create_task::<EquirectToCubemapTask>(EquirectToCubemapTaskDescriptor {
+        let material_factory = MaterialFactory::new(&self.render_env);
+        let compute_task_factory = ComputeTaskFactory::new(&self.render_env);
+
+        let equirect_to_cubemap_task = compute_task_factory.create_task::<EquirectToCubemapTask>(
+            EquirectToCubemapTaskDescriptor {
                 input_texture: Arc::clone(&sprite_texture),
                 output_cubemap: Arc::clone(&cubemap_texture_result),
-            });
+            },
+        );
 
-        self.compute_task_factory
+        ComputeTaskFactory::new(&self.render_env)
             .create_executor()
-            .record(&self.ctx, &equirect_to_cubemap_task)
-            .execute(&self.ctx)
-            .wait(&self.ctx);
+            .record(&self.render_env.render_context, &equirect_to_cubemap_task)
+            .execute(&self.render_env.render_context)
+            .wait(&self.render_env.render_context);
 
-        let cubemap_texture = self.generate_mipmaps(&cubemap_texture_result).unwrap();
-
-        let diffuse_task = self
-            .compute_task_factory
-            .create_task::<DiffuseIrradianceTask>(DiffuseIrradianceTaskDescriptor {
-                input_cubemap: Arc::clone(&cubemap_texture),
-                output_cubemap: Arc::clone(&irradiance_cubemap),
-            });
-
-        self.compute_task_factory
-            .create_executor()
-            .record(&self.ctx, &diffuse_task)
-            .execute(&self.ctx)
-            .wait(&self.ctx);
-
-        let specular_cubemap = self
-            .prefilter_specular_cubemap(&self.ctx, Arc::clone(&cubemap_texture))
+        let cubemap_texture = self
+            .generate_mipmaps(&cubemap_texture_result, &compute_task_factory)
             .unwrap();
 
-        let material = self
-            .material_factory
-            .create_material::<SkydomeEnvironmentMaterial>(SkydomeMaterialDescriptor {
+        let diffuse_task = compute_task_factory.create_task::<DiffuseIrradianceTask>(
+            DiffuseIrradianceTaskDescriptor {
+                input_cubemap: Arc::clone(&cubemap_texture),
+                output_cubemap: Arc::clone(&irradiance_cubemap),
+            },
+        );
+
+        compute_task_factory
+            .create_executor()
+            .record(&self.render_env.render_context, &diffuse_task)
+            .execute(&self.render_env.render_context)
+            .wait(&self.render_env.render_context);
+
+        let specular_cubemap = self
+            .prefilter_specular_cubemap(Arc::clone(&cubemap_texture), &compute_task_factory)
+            .unwrap();
+
+        let material = material_factory.create_material::<SkydomeEnvironmentMaterial>(
+            SkydomeMaterialDescriptor {
                 skybox_texture: Arc::clone(&cubemap_texture),
                 irradiance_texture: Arc::clone(&irradiance_cubemap),
                 specular_texture: Arc::clone(&specular_cubemap),
                 dome_radius: radius,
                 dome_factor: factor,
-            });
+            },
+        );
 
         Ok(Skydome {
             mesh,
@@ -181,6 +187,7 @@ impl<'ctx> AssetManager<'ctx> {
         buffers: &[gltf::buffer::Data],
         textures: &Vec<Arc<Texture>>,
         document: &gltf::Document,
+        material_factory: &MaterialFactory,
     ) -> anyhow::Result<Arc<ModelNode>> {
         let local_matrix = glam::Mat4::from_cols_array_2d(&node.transform().matrix());
 
@@ -209,7 +216,10 @@ impl<'ctx> AssetManager<'ctx> {
                     .unwrap_or_default(),
             };
 
-            let mesh = Arc::new(Mesh::from_data(&self.ctx.device, &mesh_data));
+            let mesh = Arc::new(Mesh::from_data(
+                &self.render_env.render_context.device,
+                &mesh_data,
+            ));
 
             let gltf_material_base = primitive.material();
             let gltf_material = ExtendedMaterialDecorator::new(gltf_material_base, &document);
@@ -285,8 +295,7 @@ impl<'ctx> AssetManager<'ctx> {
             }
 
             let material = Arc::new(Material::Physical(
-                self.material_factory
-                    .create_material::<PhysicalMaterial>(desc),
+                material_factory.create_material::<PhysicalMaterial>(desc),
             ));
             (Some(mesh), Some(material))
         } else {
@@ -295,7 +304,13 @@ impl<'ctx> AssetManager<'ctx> {
 
         let mut children = Vec::new();
         for child in node.children() {
-            children.push(self.load_node(&child, buffers, textures, &document)?);
+            children.push(self.load_node(
+                &child,
+                buffers,
+                textures,
+                &document,
+                material_factory,
+            )?);
         }
 
         Ok(Arc::new(ModelNode {
@@ -350,12 +365,15 @@ impl<'ctx> AssetManager<'ctx> {
                     gltf::image::Format::R8G8B8A8 => ComponentPrecision::U8,
                     _ => panic!("Unsupported format: {:?}", img_data.format),
                 };
-                let builder = TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
-                    .from_raw(&img_data.pixels, img_data.width, img_data.height)
-                    .with_label(label)
-                    .with_channels(channels)
-                    .with_srgb(is_srgb_image[i])
-                    .with_precision(precision);
+                let builder = TextureBuilder::new(
+                    &self.render_env.render_context.device,
+                    &self.render_env.render_context.queue,
+                )
+                .from_raw(&img_data.pixels, img_data.width, img_data.height)
+                .with_label(label)
+                .with_channels(channels)
+                .with_srgb(is_srgb_image[i])
+                .with_precision(precision);
 
                 Arc::new(builder.build())
             })
@@ -365,6 +383,7 @@ impl<'ctx> AssetManager<'ctx> {
     fn generate_mipmaps(
         &self,
         source_texture: &Arc<Texture>,
+        compute_task_factory: &ComputeTaskFactory,
     ) -> Result<Arc<Texture>, anyhow::Error> {
         let origin_width = source_texture.width;
         let origin_height = source_texture.height;
@@ -372,22 +391,26 @@ impl<'ctx> AssetManager<'ctx> {
         let mip_count = (origin_width.max(origin_height) as f32).log2().floor() as u32 + 1;
 
         let result_texture = Arc::new(
-            TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
-                .with_label("final_mipmapped_cubemap")
-                .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
-                .with_size(origin_width, origin_height)
-                .with_mip_level_count(mip_count)
-                .as_cubemap()
-                .with_usage(
-                    wgpu::TextureUsages::TEXTURE_BINDING
-                        | wgpu::TextureUsages::COPY_DST
-                        | wgpu::TextureUsages::COPY_SRC,
-                )
-                .build(),
+            TextureBuilder::new(
+                &self.render_env.render_context.device,
+                &self.render_env.render_context.queue,
+            )
+            .with_label("final_mipmapped_cubemap")
+            .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+            .with_size(origin_width, origin_height)
+            .with_mip_level_count(mip_count)
+            .as_cubemap()
+            .with_usage(
+                wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_DST
+                    | wgpu::TextureUsages::COPY_SRC,
+            )
+            .build(),
         );
 
         let mut encoder = self
-            .ctx
+            .render_env
+            .render_context
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Initial Mip Copy"),
@@ -401,7 +424,10 @@ impl<'ctx> AssetManager<'ctx> {
                 depth_or_array_layers: 6,
             },
         );
-        self.ctx.queue.submit(Some(encoder.finish()));
+        self.render_env
+            .render_context
+            .queue
+            .submit(Some(encoder.finish()));
 
         let mut current_src = Arc::clone(source_texture);
 
@@ -412,39 +438,43 @@ impl<'ctx> AssetManager<'ctx> {
             println!("Generating mip {} {}x{}", target_mip, mip_width, mip_height);
 
             let temp_mip_out = Arc::new(
-                TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
-                    .with_label(&format!("temp_mip_{}", target_mip))
-                    .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
-                    .with_size(mip_width, mip_height)
-                    .as_cubemap()
-                    .with_usage(
-                        wgpu::TextureUsages::TEXTURE_BINDING
-                            | wgpu::TextureUsages::STORAGE_BINDING
-                            | wgpu::TextureUsages::COPY_DST
-                            | wgpu::TextureUsages::COPY_SRC,
-                    )
-                    .build(),
+                TextureBuilder::new(
+                    &self.render_env.render_context.device,
+                    &self.render_env.render_context.queue,
+                )
+                .with_label(&format!("temp_mip_{}", target_mip))
+                .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+                .with_size(mip_width, mip_height)
+                .as_cubemap()
+                .with_usage(
+                    wgpu::TextureUsages::TEXTURE_BINDING
+                        | wgpu::TextureUsages::STORAGE_BINDING
+                        | wgpu::TextureUsages::COPY_DST
+                        | wgpu::TextureUsages::COPY_SRC,
+                )
+                .build(),
             );
 
-            let mipmap_task = self
-                .compute_task_factory
-                .create_task::<MipmapGeneratorTask>(MipmapGeneratorTaskDescriptor {
+            let mipmap_task = compute_task_factory.create_task::<MipmapGeneratorTask>(
+                MipmapGeneratorTaskDescriptor {
                     source_texture: Arc::clone(&current_src),
                     output_texture: Arc::clone(&temp_mip_out),
-                });
+                },
+            );
 
-            self.compute_task_factory
+            compute_task_factory
                 .create_executor()
-                .record(&self.ctx, &mipmap_task)
-                .execute(&self.ctx)
-                .wait(&self.ctx);
+                .record(&self.render_env.render_context, &mipmap_task)
+                .execute(&self.render_env.render_context)
+                .wait(&self.render_env.render_context);
 
-            let mut copy_encoder =
-                self.ctx
-                    .device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some(&format!("Copy Mip {}", target_mip)),
-                    });
+            let mut copy_encoder = self
+                .render_env
+                .render_context
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some(&format!("Copy Mip {}", target_mip)),
+                });
 
             copy_encoder.copy_texture_to_texture(
                 wgpu::ImageCopyTexture {
@@ -466,18 +496,24 @@ impl<'ctx> AssetManager<'ctx> {
                 },
             );
 
-            self.ctx.queue.submit(Some(copy_encoder.finish()));
+            self.render_env
+                .render_context
+                .queue
+                .submit(Some(copy_encoder.finish()));
             current_src = temp_mip_out;
         }
 
-        self.ctx.device.poll(wgpu::Maintain::Wait);
+        self.render_env
+            .render_context
+            .device
+            .poll(wgpu::Maintain::Wait);
         Ok(result_texture)
     }
 
     pub fn prefilter_specular_cubemap(
         &self,
-        render_context: &RenderContext,
         source_cubemap: Arc<Texture>,
+        compute_task_factory: &ComputeTaskFactory,
     ) -> Result<Arc<Texture>, anyhow::Error> {
         let origin_width = source_cubemap.width;
         let origin_height = source_cubemap.height;
@@ -485,21 +521,24 @@ impl<'ctx> AssetManager<'ctx> {
         let mip_count = (origin_width.max(origin_height) as f32).log2().floor() as u32 + 1;
 
         let result_texture = Arc::new(
-            TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
-                .with_label("final_mipmapped_cubemap")
-                .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
-                .with_size(origin_width, origin_height)
-                .with_mip_level_count(mip_count)
-                .as_cubemap()
-                .with_usage(
-                    wgpu::TextureUsages::TEXTURE_BINDING
-                        | wgpu::TextureUsages::COPY_DST
-                        | wgpu::TextureUsages::COPY_SRC,
-                )
-                .build(),
+            TextureBuilder::new(
+                &self.render_env.render_context.device,
+                &self.render_env.render_context.queue,
+            )
+            .with_label("final_mipmapped_cubemap")
+            .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+            .with_size(origin_width, origin_height)
+            .with_mip_level_count(mip_count)
+            .as_cubemap()
+            .with_usage(
+                wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_DST
+                    | wgpu::TextureUsages::COPY_SRC,
+            )
+            .build(),
         );
 
-        let mut executor = self.compute_task_factory.create_executor();
+        let mut executor = compute_task_factory.create_executor();
 
         for mip in 0..mip_count {
             let mip_width = (origin_width >> mip).max(1);
@@ -508,38 +547,42 @@ impl<'ctx> AssetManager<'ctx> {
             let roughness = linear_roughness * linear_roughness;
 
             let temp_specular_mip_out = Arc::new(
-                TextureBuilder::new(&self.ctx.device, &self.ctx.queue)
-                    .with_label(&format!("temp_specular_mip_{}", mip))
-                    .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
-                    .with_size(mip_width, mip_height)
-                    .as_cubemap()
-                    .with_usage(
-                        wgpu::TextureUsages::TEXTURE_BINDING
-                            | wgpu::TextureUsages::STORAGE_BINDING
-                            | wgpu::TextureUsages::COPY_DST
-                            | wgpu::TextureUsages::COPY_SRC,
-                    )
-                    .build(),
+                TextureBuilder::new(
+                    &self.render_env.render_context.device,
+                    &self.render_env.render_context.queue,
+                )
+                .with_label(&format!("temp_specular_mip_{}", mip))
+                .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+                .with_size(mip_width, mip_height)
+                .as_cubemap()
+                .with_usage(
+                    wgpu::TextureUsages::TEXTURE_BINDING
+                        | wgpu::TextureUsages::STORAGE_BINDING
+                        | wgpu::TextureUsages::COPY_DST
+                        | wgpu::TextureUsages::COPY_SRC,
+                )
+                .build(),
             );
 
             let specular_mipmap_data = SpecularPrefilterUniform::new(roughness);
-            let specular_mipmap_buffer = Arc::new(render_context.device.create_buffer_init(
-                &wgpu::util::BufferInitDescriptor {
-                    label: Some("Specular Prefilter Uniform Buffer"),
-                    contents: bytemuck::cast_slice(&[specular_mipmap_data]),
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                },
-            ));
+            let specular_mipmap_buffer =
+                Arc::new(self.render_env.render_context.device.create_buffer_init(
+                    &wgpu::util::BufferInitDescriptor {
+                        label: Some("Specular Prefilter Uniform Buffer"),
+                        contents: bytemuck::cast_slice(&[specular_mipmap_data]),
+                        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                    },
+                ));
 
-            let prefilter_task = self
-                .compute_task_factory
-                .create_task::<SpecularPrefilterTask>(SpecularPrefilterTaskDescriptor {
+            let prefilter_task = compute_task_factory.create_task::<SpecularPrefilterTask>(
+                SpecularPrefilterTaskDescriptor {
                     input_cubemap: Arc::clone(&source_cubemap),
                     output_cubemap: Arc::clone(&temp_specular_mip_out),
                     config: Arc::clone(&specular_mipmap_buffer),
-                });
+                },
+            );
 
-            executor.record(&self.ctx, &prefilter_task);
+            executor.record(&self.render_env.render_context, &prefilter_task);
 
             executor
                 .get_encoder_mut()
@@ -564,8 +607,8 @@ impl<'ctx> AssetManager<'ctx> {
                     },
                 );
         }
-        executor.execute(&self.ctx);
-        executor.wait(&self.ctx);
+        executor.execute(&self.render_env.render_context);
+        executor.wait(&self.render_env.render_context);
         Ok(result_texture)
     }
 }

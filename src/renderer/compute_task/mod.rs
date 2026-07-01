@@ -1,11 +1,11 @@
-use std::{cell::RefCell, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
     core::{
         compute_task::{ComputeTaskInstance, ComputeTaskTrait},
         render_context::RenderContext,
     },
-    renderer::{layout_interface::LayoutInterface, pipeline_manager::PipelineManager},
+    renderer::{RenderingEnvironment, pipeline_manager::PipelineManager},
 };
 
 pub mod equirect_to_cubemap;
@@ -29,45 +29,35 @@ pub use mipmap_generator::Task as MipmapGeneratorTask;
 pub use mipmap_generator::TaskDescriptor as MipmapGeneratorTaskDescriptor;
 
 pub struct ComputeTaskFactory<'a> {
-    render_context: &'a RenderContext<'a>,
-    layout_interface: Arc<RefCell<LayoutInterface>>,
-    pipeline_manager: &'a PipelineManager,
+    render_env: &'a RenderingEnvironment<'a>,
 }
 
 impl<'a> ComputeTaskFactory<'a> {
-    pub fn new(
-        render_context: &'a RenderContext<'a>,
-        layout_interface: Arc<RefCell<LayoutInterface>>,
-        pipeline_manager: &'a PipelineManager,
-    ) -> Self {
-        Self {
-            render_context,
-            layout_interface,
-            pipeline_manager,
-        }
+    pub fn new(render_env: &'a RenderingEnvironment) -> Self {
+        Self { render_env }
     }
 
     pub fn create_task<T: ComputeTaskTrait>(&self, desc: T::Descriptor) -> ComputeTaskInstance {
         let bind_group_layout = Arc::clone(
-            self.layout_interface
-                .borrow()
+            self.render_env
+                .layout_interface
                 .compute_tasks
                 .get(&T::TYPE)
                 .expect("Layout not found for compute task type {T::TYPE}"),
         );
-        T::create_instance(self.render_context, desc, &bind_group_layout)
+        T::create_instance(&self.render_env.render_context, desc, &bind_group_layout)
             .expect("Failed to create compute task instance")
     }
 
     pub fn create_executor(&self) -> ComputeExecutor<'_> {
-        ComputeExecutor::new(self.pipeline_manager)
+        ComputeExecutor::new(&self.render_env.pipeline_manager)
     }
 
     pub fn create_executor_from_encoder(
         &self,
         encoder: wgpu::CommandEncoder,
     ) -> ComputeExecutor<'_> {
-        ComputeExecutor::from_encoder(self.pipeline_manager, encoder)
+        ComputeExecutor::from_encoder(&self.render_env.pipeline_manager, encoder)
     }
 }
 

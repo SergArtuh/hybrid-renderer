@@ -1,5 +1,4 @@
 use std::{
-    cell::RefCell,
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::Arc,
@@ -96,12 +95,12 @@ impl ShaderWatcher {
 }
 
 pub type PipelineBuilderFn =
-    fn(&PipelineVisitorEnvironment) -> Result<wgpu::RenderPipeline, anyhow::Error>;
+    fn(&mut PipelineVisitorEnvironment) -> Result<wgpu::RenderPipeline, anyhow::Error>;
 
 type ReloadFn = Box<
     dyn Fn(
         &PipelineManager,
-        &PipelineVisitorEnvironment,
+        &mut PipelineVisitorEnvironment,
     ) -> Result<wgpu::RenderPipeline, anyhow::Error>,
 >;
 
@@ -154,7 +153,7 @@ impl PipelineManager {
     pub fn register_pipeline<T: MaterialTrait>(
         &mut self,
         context: &RenderContext,
-        interface: Arc<RefCell<LayoutInterface>>,
+        interface: &mut LayoutInterface,
         shader_path: &str,
         pipeline_builder: PipelineBuilderFn,
     ) {
@@ -169,13 +168,13 @@ impl PipelineManager {
             material_type,
         };
 
-        let pipeline_visitor_env = PipelineVisitorEnvironment {
+        let mut pipeline_visitor_env = PipelineVisitorEnvironment {
             pipeline_definition: &pipeline_definition,
             context,
             layout: interface,
         };
 
-        let render_pipeline = pipeline_builder(&pipeline_visitor_env);
+        let render_pipeline = pipeline_builder(&mut pipeline_visitor_env);
 
         if let Ok(render_pipeline) = render_pipeline {
             self.render_pipelines.insert(material_type, render_pipeline);
@@ -196,7 +195,7 @@ impl PipelineManager {
     pub fn register_compute_pipeline<T: ComputeTaskTrait>(
         &mut self,
         context: &RenderContext,
-        interface: Arc<RefCell<LayoutInterface>>,
+        interface: &mut LayoutInterface,
     ) {
         let task_type = T::TYPE;
         let shader_path = self.base_compute_shaders_path.join(T::get_shader_path());
@@ -250,7 +249,6 @@ impl PipelineManager {
 
         self.compute_pipelines.insert(task_type, pipeline);
         interface
-            .borrow_mut()
             .compute_tasks
             .insert(task_type, Arc::new(bind_group_layout));
     }
@@ -271,7 +269,7 @@ impl PipelineManager {
     pub fn check_shader_updates(
         &mut self,
         context: &RenderContext,
-        interface: Arc<RefCell<LayoutInterface>>,
+        interface: &mut LayoutInterface,
     ) {
         #[cfg(feature = "shader-hot-reload")]
         {
@@ -283,10 +281,10 @@ impl PipelineManager {
             };
 
             for pipeline_definition in modified_pipelines {
-                let pipeline_visitor_env = PipelineVisitorEnvironment {
+                let mut pipeline_visitor_env = PipelineVisitorEnvironment {
                     pipeline_definition: &pipeline_definition,
                     context,
-                    layout: Arc::clone(&interface),
+                    layout: interface,
                 };
 
                 let reloader = self
@@ -294,7 +292,7 @@ impl PipelineManager {
                     .get(&pipeline_definition.material_type)
                     .unwrap();
 
-                let pipeline = reloader(self, &pipeline_visitor_env);
+                let pipeline = reloader(self, &mut pipeline_visitor_env);
 
                 if let Ok(pipeline) = pipeline {
                     self.render_pipelines

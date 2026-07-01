@@ -1,5 +1,6 @@
 use hybrid_renderer::assets::model::Model;
 use hybrid_renderer::core::model_node::ModelNode;
+use hybrid_renderer::renderer::materials::MaterialFactory;
 use std::sync::Arc;
 use std::time::Instant;
 use winit::event::{Event, WindowEvent};
@@ -10,7 +11,7 @@ use hybrid_renderer::assets::camera::Camera;
 use hybrid_renderer::core::math::Vec3;
 use hybrid_renderer::core::mesh::Mesh;
 use hybrid_renderer::core::render_context::RenderContext;
-use hybrid_renderer::renderer::Renderer;
+use hybrid_renderer::renderer::{Renderer, RenderingEnvironment};
 use hybrid_renderer::stage::Stage;
 use hybrid_renderer::util::geometry_generator::MeshUtil;
 
@@ -87,7 +88,8 @@ pub fn run() {
     surface.configure(&device, &config);
 
     let render_context = RenderContext::new(device, queue, surface, config);
-    let mut renderer = Renderer::new(&render_context);
+    let mut render_env = RenderingEnvironment::new(render_context);
+    let mut renderer = Renderer::new(&mut render_env);
 
     let camera = Camera::new(Vec3::new(0.0, 0.0, CAMERA_DISTANCE))
         .with_target(Vec3::new(0.0, 0.0, 0.0))
@@ -95,11 +97,9 @@ pub fn run() {
         .with_aspect(size.width as f32 / size.height as f32);
 
     let mesh_data = MeshUtil::new_cube(0.8);
-    let mesh = Mesh::from_data(&render_context.device, &mesh_data);
+    let mesh = Mesh::from_data(&render_env.render_context.device, &mesh_data);
 
-    let material = renderer
-        .get_material_factory(&render_context)
-        .create_default_material();
+    let material = MaterialFactory::new(&render_env).create_default_material();
     let model_node = ModelNode::new(mesh, material);
     let model = Model::new(Arc::new(model_node), glam::Mat4::IDENTITY);
 
@@ -129,7 +129,7 @@ pub fn run() {
                 stage.main_camera.position.x = camera_x;
                 stage.main_camera.position.z = camera_z;
                 let frame_data = stage.make_frame_data();
-                renderer.render(&render_context, &frame_data);
+                renderer.render(&mut render_env, &frame_data);
             }
             Event::AboutToWait => {
                 window.request_redraw();
