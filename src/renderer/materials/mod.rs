@@ -8,44 +8,36 @@ pub use sprite_material::SpriteMaterialDefinition;
 
 use crate::core::material::{Material, MaterialTrait, PhysicalMaterial};
 use crate::core::render_context::RenderContext;
+use crate::renderer::RenderingEnvironment;
 use crate::renderer::layout_interface::LayoutInterface;
 use crate::renderer::materials::pbr_material::PhysicalMaterialDescriptor;
 use crate::renderer::pipeline_manager::PipelineDefinition;
-use std::cell::RefCell;
-use std::sync::Arc;
 
 const DEFAULT_DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 pub struct PipelineVisitorEnvironment<'a> {
     pub(crate) pipeline_definition: &'a PipelineDefinition,
     pub context: &'a RenderContext<'a>,
-    pub layout: Arc<RefCell<LayoutInterface>>,
+    pub layout: &'a mut LayoutInterface,
 }
 
 pub struct MaterialFactory<'a> {
-    render_context: &'a RenderContext<'a>,
-    layout_interface: Arc<RefCell<LayoutInterface>>,
+    render_env: &'a RenderingEnvironment<'a>,
 }
 
 impl<'a> MaterialFactory<'a> {
-    pub(in crate::renderer) fn new(
-        render_context: &'a RenderContext<'a>,
-        layout_interface: Arc<RefCell<LayoutInterface>>,
-    ) -> Self {
-        Self {
-            render_context,
-            layout_interface,
-        }
+    pub fn new(render_env: &'a RenderingEnvironment) -> Self {
+        Self { render_env }
     }
 
     pub fn create_material<M: MaterialTrait>(&self, desc: M::Descriptor) -> M {
-        let bind_group_layout = Arc::clone(
-            self.layout_interface
-                .borrow()
-                .materials
-                .get(&M::TYPE)
-                .expect("Layout not found for material type {M::TYPE}"),
-        );
-        M::create(self.render_context, desc, &bind_group_layout)
+        let layout_interface = &self.render_env.layout_interface;
+        let render_context = &self.render_env.render_context;
+
+        let bind_group_layout = layout_interface
+            .materials
+            .get(&M::TYPE)
+            .expect("Layout not found for material type {M::TYPE}");
+        M::create(render_context, desc, &bind_group_layout)
             .expect("Failed to create material instance")
     }
 

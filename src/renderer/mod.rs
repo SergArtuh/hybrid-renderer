@@ -1,19 +1,18 @@
-use std::{cell::RefCell, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
-    assets::asset_manager::AssetManager,
     core::{
         material::{PhysicalMaterial, SkydomeEnvironmentMaterial, SpriteMaterial},
         render_context::RenderContext,
     },
     renderer::{
         compute_task::{
-            ClearCubemapTask, ComputeTaskFactory, DiffuseIrradianceTask, EquirectToCubemapTask,
-            MipmapGeneratorTask, SpecularPrefilterTask,
+            ClearCubemapTask, DiffuseIrradianceTask, EquirectToCubemapTask, MipmapGeneratorTask,
+            SpecularPrefilterTask,
         },
         frame_target::FrameTarget,
         layout_interface::{GlobalResources, LayoutInterface, ModelResources},
-        materials::{MaterialFactory, skydome_material::SkydomeMaterialDefinition},
+        materials::skydome_material::SkydomeMaterialDefinition,
         pipeline_manager::PipelineManager,
     },
     stage::frame_data::FrameData,
@@ -29,71 +28,81 @@ pub mod pipeline_manager;
 use materials::{PbrMaterialDefinition, SpriteMaterialDefinition};
 use passes::forward::ForwardPass;
 
+pub struct RenderingEnvironment<'a> {
+    pub render_context: RenderContext<'a>,
+    pub layout_interface: LayoutInterface,
+    pub pipeline_manager: PipelineManager,
+}
+
+impl<'a> RenderingEnvironment<'a> {
+    pub fn new(render_context: RenderContext<'a>) -> Self {
+        let layout_interface = LayoutInterface::new(&render_context);
+        let pipeline_manager = PipelineManager::new();
+        Self {
+            render_context,
+            layout_interface,
+            pipeline_manager,
+        }
+    }
+}
+
 pub struct Renderer {
     forward_pass: ForwardPass,
-    pipeline_manager: PipelineManager,
-    pub layout_interface: Arc<RefCell<LayoutInterface>>,
+    //pipeline_manager: PipelineManager,
+    //pub layout_interface: Arc<RefCell<LayoutInterface>>,
     global_resources: GlobalResources,
     model_resources: ModelResources,
     depth_texture_view: wgpu::TextureView,
 }
 
 impl Renderer {
-    pub fn new(render_context: &RenderContext) -> Self {
+    pub fn new(rendering_environment: &mut RenderingEnvironment) -> Self {
+        let render_context = &rendering_environment.render_context;
+        let layout_interface = &mut rendering_environment.layout_interface;
+        let pipeline_manager = &mut rendering_environment.pipeline_manager;
         render_context
             .device
             .push_error_scope(wgpu::ErrorFilter::Validation);
 
-        let layout_interface = Arc::new(RefCell::new(LayoutInterface::new(render_context)));
-        let global_resources =
-            GlobalResources::new(render_context, &layout_interface.borrow().global);
-        let model_resources = ModelResources::new(render_context, &layout_interface.borrow().model);
+        //let layout_interface = Arc::new(RefCell::new(LayoutInterface::new(render_context)));
+        let global_resources = GlobalResources::new(render_context, &layout_interface.global);
+        let model_resources = ModelResources::new(render_context, &layout_interface.model);
         let depth_texture_view = Self::create_depth_texture(render_context);
 
-        let mut pipeline_manager = PipelineManager::new();
+        //let mut pipeline_manager = PipelineManager::new();
         pipeline_manager.register_pipeline::<PhysicalMaterial>(
             render_context,
-            Arc::clone(&layout_interface),
+            layout_interface,
             "pbr_material.wgsl",
             PbrMaterialDefinition::create_pipeline,
         );
         pipeline_manager.register_pipeline::<SpriteMaterial>(
             render_context,
-            Arc::clone(&layout_interface),
+            layout_interface,
             "sprite_material.wgsl",
             SpriteMaterialDefinition::create_pipeline,
         );
         pipeline_manager.register_pipeline::<SkydomeEnvironmentMaterial>(
             render_context,
-            Arc::clone(&layout_interface),
+            layout_interface,
             "skydome.wgsl",
             SkydomeMaterialDefinition::create_pipeline,
         );
 
-        pipeline_manager.register_compute_pipeline::<EquirectToCubemapTask>(
-            render_context,
-            Arc::clone(&layout_interface),
-        );
+        pipeline_manager
+            .register_compute_pipeline::<EquirectToCubemapTask>(render_context, layout_interface);
 
-        pipeline_manager.register_compute_pipeline::<ClearCubemapTask>(
-            render_context,
-            Arc::clone(&layout_interface),
-        );
+        pipeline_manager
+            .register_compute_pipeline::<ClearCubemapTask>(render_context, layout_interface);
 
-        pipeline_manager.register_compute_pipeline::<DiffuseIrradianceTask>(
-            render_context,
-            Arc::clone(&layout_interface),
-        );
+        pipeline_manager
+            .register_compute_pipeline::<DiffuseIrradianceTask>(render_context, layout_interface);
 
-        pipeline_manager.register_compute_pipeline::<MipmapGeneratorTask>(
-            render_context,
-            Arc::clone(&layout_interface),
-        );
+        pipeline_manager
+            .register_compute_pipeline::<MipmapGeneratorTask>(render_context, layout_interface);
 
-        pipeline_manager.register_compute_pipeline::<SpecularPrefilterTask>(
-            render_context,
-            Arc::clone(&layout_interface),
-        );
+        pipeline_manager
+            .register_compute_pipeline::<SpecularPrefilterTask>(render_context, layout_interface);
 
         let forward_pass = ForwardPass::default();
 
@@ -101,14 +110,27 @@ impl Renderer {
             forward_pass,
             global_resources,
             model_resources,
-            pipeline_manager,
-            layout_interface,
+            //pipeline_manager,
+            //layout_interface,
             depth_texture_view,
         }
     }
 
-    pub fn render(&mut self, render_context: &RenderContext, frame_data: &FrameData) {
-        let mut frame_target = self.begin_frame(render_context, frame_data);
+    pub fn render(
+        &mut self,
+        rendering_environment: &mut RenderingEnvironment,
+        frame_data: &FrameData,
+    ) {
+        let render_context = &rendering_environment.render_context;
+        let layout_interface = &mut rendering_environment.layout_interface;
+        let pipeline_manager = &mut rendering_environment.pipeline_manager;
+
+        let mut frame_target = self.begin_frame(
+            render_context,
+            layout_interface,
+            pipeline_manager,
+            frame_data,
+        );
 
         {
             let mut render_pass =
@@ -116,7 +138,7 @@ impl Renderer {
 
             self.forward_pass.execute(
                 &mut render_pass,
-                &self.pipeline_manager,
+                pipeline_manager,
                 &self.global_resources,
                 &self.model_resources,
                 frame_data,
@@ -126,33 +148,11 @@ impl Renderer {
         self.end_frame(render_context, frame_target);
     }
 
-    pub fn get_material_factory<'a>(
-        &'a self,
-        render_context: &'a RenderContext,
-    ) -> MaterialFactory<'a> {
-        MaterialFactory::new(render_context, Arc::clone(&self.layout_interface))
-    }
-
-    pub fn get_compute_task_factory<'a>(
-        &'a self,
-        render_context: &'a RenderContext,
-    ) -> ComputeTaskFactory<'a> {
-        ComputeTaskFactory::new(
-            render_context,
-            Arc::clone(&self.layout_interface),
-            &self.pipeline_manager,
-        )
-    }
-
-    pub fn get_asset_manager<'a>(&'a self, render_context: &'a RenderContext) -> AssetManager<'a> {
-        let compute_task_factory = self.get_compute_task_factory(render_context);
-        let material_factory = self.get_material_factory(render_context);
-        AssetManager::new(render_context, material_factory, compute_task_factory)
-    }
-
     fn begin_frame(
         &mut self,
         render_context: &RenderContext,
+        layout_interface: &mut LayoutInterface,
+        pipeline_manager: &mut PipelineManager,
         frame_data: &FrameData,
     ) -> FrameTarget {
         let surface_texture = match render_context.surface.get_current_texture() {
@@ -174,8 +174,7 @@ impl Renderer {
                     label: Some("Render Encoder"),
                 });
 
-        self.pipeline_manager
-            .check_shader_updates(render_context, Arc::clone(&self.layout_interface));
+        pipeline_manager.check_shader_updates(render_context, layout_interface);
 
         self.global_resources
             .update_camera_uniform_buffer(render_context, &frame_data.camera_uniform);
@@ -185,7 +184,7 @@ impl Renderer {
             .map(|environment_texture| {
                 self.global_resources.update_skybox_texture(
                     render_context,
-                    &self.layout_interface.borrow().global,
+                    &layout_interface.global,
                     Arc::clone(&environment_texture.skybox),
                     Arc::clone(&environment_texture.irradiance),
                     Arc::clone(&environment_texture.specular),

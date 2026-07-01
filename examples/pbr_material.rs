@@ -1,3 +1,4 @@
+use hybrid_renderer::assets::asset_manager::AssetManager;
 use hybrid_renderer::assets::model::Model;
 use hybrid_renderer::input::camera_controller::{
     OrbitCameraController, OrbitCameraControllerDescriptor,
@@ -11,7 +12,7 @@ use winit::window::WindowBuilder;
 use hybrid_renderer::assets::camera::Camera;
 use hybrid_renderer::core::math::Vec3;
 use hybrid_renderer::core::render_context::RenderContext;
-use hybrid_renderer::renderer::Renderer;
+use hybrid_renderer::renderer::{Renderer, RenderingEnvironment};
 use hybrid_renderer::stage::Stage;
 
 //const CAMERA_DISTANCE: f32 = 250.0;
@@ -102,9 +103,10 @@ pub fn run() {
     });
 
     let render_context = RenderContext::new(device, queue, surface, config);
-    let mut renderer = Renderer::new(&render_context);
+    let mut render_env = RenderingEnvironment::new(render_context);
+    let mut renderer = Renderer::new(&mut render_env);
 
-    let asset_manager = renderer.get_asset_manager(&render_context);
+    let asset_manager = AssetManager::new(&render_env);
     let models = asset_manager
         //.load_gltf_models("assets/models/MetalRoughSpheres.glb")
         .load_gltf_models("assets/models/ClearCoatTest.glb")
@@ -172,7 +174,7 @@ pub fn run() {
                 camera_controller.update_camera(&mut stage.main_camera, delta_time);
 
                 let frame_data = stage.make_frame_data();
-                renderer.render(&render_context, &frame_data);
+                renderer.render(&mut render_env, &frame_data);
             }
             Event::AboutToWait => {
                 window.request_redraw();
