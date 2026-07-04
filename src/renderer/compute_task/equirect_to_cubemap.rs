@@ -1,9 +1,13 @@
 use std::sync::Arc;
 
-use crate::core::{
-    compute_task::{ComputeTaskInstance, ComputeTaskTrait, ComputeTaskType},
-    render_context::RenderContext,
-    texture::Texture,
+use crate::{
+    core::{
+        compute_task::{ComputeTaskInstance, ComputeTaskTrait, ComputeTaskType},
+        render_context::RenderContext,
+        texture::Texture,
+        texture_builder::TextureBuilder,
+    },
+    renderer::{RenderingEnvironment, compute_task::ComputeTaskFactory},
 };
 pub struct TaskDescriptor {
     pub input_texture: Arc<Texture>,
@@ -99,4 +103,47 @@ impl ComputeTaskTrait for Task {
     }
 
     type Descriptor = TaskDescriptor;
+}
+
+pub struct Provider<'a> {
+    render_env: &'a RenderingEnvironment<'a>,
+}
+
+impl<'a> Provider<'a> {
+    pub fn new(render_env: &'a RenderingEnvironment<'a>) -> Self {
+        Self { render_env }
+    }
+
+    pub fn process(&self, source_texture: &Arc<Texture>) -> Result<Arc<Texture>, anyhow::Error> {
+        let result_texture = Arc::new(
+            TextureBuilder::new(
+                &self.render_env.render_context.device,
+                &self.render_env.render_context.queue,
+            )
+            .with_label("equirect_cubemap")
+            .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+            .with_size(1024, 1024)
+            .as_cubemap()
+            .with_usage(
+                wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::STORAGE_BINDING
+                    | wgpu::TextureUsages::COPY_DST
+                    | wgpu::TextureUsages::COPY_SRC,
+            )
+            .build(),
+        );
+        let compute_task_factory = ComputeTaskFactory::new(self.render_env);
+        let equirect_to_cubemap_task = compute_task_factory.create_task::<Task>(TaskDescriptor {
+            input_texture: source_texture.clone(),
+            output_cubemap: result_texture.clone(),
+        });
+
+        ComputeTaskFactory::new(&self.render_env)
+            .create_executor()
+            .record(&self.render_env.render_context, &equirect_to_cubemap_task)
+            .execute(&self.render_env.render_context)
+            .wait(&self.render_env.render_context);
+
+        Ok(result_texture)
+    }
 }

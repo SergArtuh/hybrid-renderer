@@ -1,9 +1,13 @@
 use std::sync::Arc;
 
-use crate::core::{
-    compute_task::{ComputeTaskInstance, ComputeTaskTrait, ComputeTaskType},
-    render_context::RenderContext,
-    texture::Texture,
+use crate::{
+    core::{
+        compute_task::{ComputeTaskInstance, ComputeTaskTrait, ComputeTaskType},
+        render_context::RenderContext,
+        texture::Texture,
+        texture_builder::TextureBuilder,
+    },
+    renderer::{RenderingEnvironment, compute_task::ComputeTaskFactory},
 };
 
 const TASK_TYPE: ComputeTaskType = ComputeTaskType::DiffuseIrradiance;
@@ -103,4 +107,49 @@ impl ComputeTaskTrait for Task {
     }
 
     type Descriptor = TaskDescriptor;
+}
+
+pub struct Provider<'a> {
+    render_env: &'a RenderingEnvironment<'a>,
+}
+
+impl<'a> Provider<'a> {
+    pub fn new(render_env: &'a RenderingEnvironment<'a>) -> Self {
+        Self { render_env }
+    }
+
+    pub fn process(
+        &self,
+        source_texture: &Arc<Texture>,
+        irradiance_resolution: u32,
+    ) -> Result<Arc<Texture>, anyhow::Error> {
+        let compute_task_factory = ComputeTaskFactory::new(self.render_env);
+        let result_texture = Arc::new(
+            TextureBuilder::new(
+                &self.render_env.render_context.device,
+                &self.render_env.render_context.queue,
+            )
+            .with_label("diffuse_irradiance")
+            .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+            .with_size(irradiance_resolution, irradiance_resolution)
+            .as_cubemap()
+            .with_usage(
+                wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::STORAGE_BINDING
+                    | wgpu::TextureUsages::COPY_DST,
+            )
+            .build(),
+        );
+        let diffuse_task = compute_task_factory.create_task::<Task>(TaskDescriptor {
+            input_cubemap: Arc::clone(&source_texture),
+            output_cubemap: Arc::clone(&result_texture),
+        });
+
+        compute_task_factory
+            .create_executor()
+            .record(&self.render_env.render_context, &diffuse_task)
+            .execute(&self.render_env.render_context)
+            .wait(&self.render_env.render_context);
+        Ok(result_texture)
+    }
 }

@@ -1,9 +1,13 @@
 use std::sync::Arc;
 
-use crate::core::{
-    compute_task::{ComputeTaskInstance, ComputeTaskTrait, ComputeTaskType},
-    render_context::RenderContext,
-    texture::Texture,
+use crate::{
+    core::{
+        compute_task::{ComputeTaskInstance, ComputeTaskTrait, ComputeTaskType},
+        render_context::RenderContext,
+        texture::Texture,
+        texture_builder::TextureBuilder,
+    },
+    renderer::{RenderingEnvironment, compute_task::ComputeTaskFactory},
 };
 
 const TASK_TYPE: ComputeTaskType = ComputeTaskType::MipmapGenerator;
@@ -31,7 +35,6 @@ impl ComputeTaskTrait for Task {
                 visibility: wgpu::ShaderStages::COMPUTE,
                 ty: wgpu::BindingType::Texture {
                     multisampled: false,
-                    // Читаем как Cube (или D2Array, если по слоям)
                     view_dimension: wgpu::TextureViewDimension::D2Array,
                     sample_type: wgpu::TextureSampleType::Float { filterable: false },
                 },
@@ -43,7 +46,6 @@ impl ComputeTaskTrait for Task {
                 ty: wgpu::BindingType::StorageTexture {
                     access: wgpu::StorageTextureAccess::WriteOnly,
                     format: wgpu::TextureFormat::Rgba16Float,
-                    // Пишем в массив из 6 слоев
                     view_dimension: wgpu::TextureViewDimension::D2Array,
                 },
                 count: None,
@@ -111,4 +113,140 @@ impl ComputeTaskTrait for Task {
     }
 
     type Descriptor = TaskDescriptor;
+}
+
+pub struct Provider<'a> {
+    render_env: &'a RenderingEnvironment<'a>,
+}
+
+impl<'a> Provider<'a> {
+    pub fn new(render_env: &'a RenderingEnvironment<'a>) -> Self {
+        Self { render_env }
+    }
+
+    pub fn process(&self, source_texture: &Arc<Texture>) -> Result<Arc<Texture>, anyhow::Error> {
+        let origin_width = source_texture.width;
+        let origin_height = source_texture.height;
+
+        let mip_count = (origin_width.max(origin_height) as f32).log2().floor() as u32 + 1;
+
+        let result_texture = Arc::new(
+            TextureBuilder::new(
+                &self.render_env.render_context.device,
+                &self.render_env.render_context.queue,
+            )
+            .with_label("final_mipmapped_cubemap")
+            .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+            .with_size(origin_width, origin_height)
+            .with_mip_level_count(mip_count)
+            .as_cubemap()
+            .with_usage(
+                wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_DST
+                    | wgpu::TextureUsages::COPY_SRC,
+            )
+            .build(),
+        );
+
+        let mut encoder = self
+            .render_env
+            .render_context
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Initial Mip Copy"),
+            });
+
+        encoder.copy_texture_to_texture(
+            source_texture.texture.as_image_copy(),
+            result_texture.texture.as_image_copy(),
+            wgpu::Extent3d {
+                width: origin_width,
+                height: origin_height,
+                depth_or_array_layers: 6,
+            },
+        );
+        self.render_env
+            .render_context
+            .queue
+            .submit(Some(encoder.finish()));
+
+        let mut current_src = Arc::clone(source_texture);
+
+        for target_mip in 1..mip_count {
+            let mip_width = (origin_width >> target_mip).max(1);
+            let mip_height = (origin_height >> target_mip).max(1);
+
+            println!("Generating mip {} {}x{}", target_mip, mip_width, mip_height);
+
+            let temp_mip_out = Arc::new(
+                TextureBuilder::new(
+                    &self.render_env.render_context.device,
+                    &self.render_env.render_context.queue,
+                )
+                .with_label(&format!("temp_mip_{}", target_mip))
+                .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
+                .with_size(mip_width, mip_height)
+                .as_cubemap()
+                .with_usage(
+                    wgpu::TextureUsages::TEXTURE_BINDING
+                        | wgpu::TextureUsages::STORAGE_BINDING
+                        | wgpu::TextureUsages::COPY_DST
+                        | wgpu::TextureUsages::COPY_SRC,
+                )
+                .build(),
+            );
+
+            let compute_task_factory = ComputeTaskFactory::new(self.render_env);
+            let mipmap_task = compute_task_factory.create_task::<Task>(TaskDescriptor {
+                source_texture: Arc::clone(&current_src),
+                output_texture: Arc::clone(&temp_mip_out),
+            });
+
+            compute_task_factory
+                .create_executor()
+                .record(&self.render_env.render_context, &mipmap_task)
+                .execute(&self.render_env.render_context)
+                .wait(&self.render_env.render_context);
+
+            let mut copy_encoder = self
+                .render_env
+                .render_context
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some(&format!("Copy Mip {}", target_mip)),
+                });
+
+            copy_encoder.copy_texture_to_texture(
+                wgpu::ImageCopyTexture {
+                    texture: &temp_mip_out.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::ImageCopyTexture {
+                    texture: &result_texture.texture,
+                    mip_level: target_mip,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::Extent3d {
+                    width: mip_width,
+                    height: mip_height,
+                    depth_or_array_layers: 6,
+                },
+            );
+
+            self.render_env
+                .render_context
+                .queue
+                .submit(Some(copy_encoder.finish()));
+            current_src = temp_mip_out;
+        }
+
+        self.render_env
+            .render_context
+            .device
+            .poll(wgpu::Maintain::Wait);
+        Ok(result_texture)
+    }
 }

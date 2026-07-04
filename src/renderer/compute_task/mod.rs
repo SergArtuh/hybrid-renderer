@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub mod equirect_to_cubemap;
+pub use equirect_to_cubemap::Provider as EquirectToCubemapProvider;
 pub use equirect_to_cubemap::Task as EquirectToCubemapTask;
 pub use equirect_to_cubemap::TaskDescriptor as EquirectToCubemapTaskDescriptor;
 
@@ -17,14 +18,17 @@ pub use clear_cubemap::Task as ClearCubemapTask;
 pub use clear_cubemap::TaskDescriptor as ClearCubemapTaskDescriptor;
 
 pub mod diffuse_irradiance;
+pub use diffuse_irradiance::Provider as DiffuseIrradianceProvider;
 pub use diffuse_irradiance::Task as DiffuseIrradianceTask;
 pub use diffuse_irradiance::TaskDescriptor as DiffuseIrradianceTaskDescriptor;
 
 pub mod specular_prefilter;
+pub use specular_prefilter::Provider as SpecularPrefilterProvider;
 pub use specular_prefilter::Task as SpecularPrefilterTask;
 pub use specular_prefilter::TaskDescriptor as SpecularPrefilterTaskDescriptor;
 
 pub mod mipmap_generator;
+pub use mipmap_generator::Provider as MipmapGeneratorProvider;
 pub use mipmap_generator::Task as MipmapGeneratorTask;
 pub use mipmap_generator::TaskDescriptor as MipmapGeneratorTaskDescriptor;
 
