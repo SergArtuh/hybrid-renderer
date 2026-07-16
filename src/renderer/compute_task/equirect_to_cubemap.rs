@@ -3,7 +3,6 @@ use std::sync::Arc;
 use crate::{
     core::{
         compute_task::{ComputeTaskInstance, ComputeTaskTrait, ComputeTaskType},
-        render_context::RenderContext,
         texture::Texture,
         texture_builder::TextureBuilder,
     },
@@ -57,7 +56,7 @@ impl ComputeTaskTrait for Task {
     }
 
     fn create_instance(
-        render_context: &RenderContext,
+        render_env: &RenderingEnvironment,
         desc: Self::Descriptor,
         layout: &wgpu::BindGroupLayout,
     ) -> Result<ComputeTaskInstance, anyhow::Error> {
@@ -67,26 +66,30 @@ impl ComputeTaskTrait for Task {
             .as_ref()
             .expect("Cubemap array view should be present");
 
-        let bind_group = render_context
-            .device
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&desc.input_texture.view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&cubemap_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::Sampler(&render_context.common_sampler),
-                    },
-                ],
-                label: Some("Equirect to Cubemap Bind Group"),
-            });
+        let bind_group =
+            render_env
+                .render_context
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(&desc.input_texture.view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(&cubemap_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::Sampler(
+                                &render_env.render_resources.common_sampler,
+                            ),
+                        },
+                    ],
+                    label: Some("Equirect to Cubemap Bind Group"),
+                });
 
         let (width, height) = (desc.output_cubemap.width, desc.output_cubemap.height);
         let workgroup_size = 16;
@@ -140,9 +143,9 @@ impl<'a> Provider<'a> {
 
         ComputeTaskFactory::new(&self.render_env)
             .create_executor()
-            .record(&self.render_env.render_context, &equirect_to_cubemap_task)
-            .execute(&self.render_env.render_context)
-            .wait(&self.render_env.render_context);
+            .record(&equirect_to_cubemap_task)
+            .execute()
+            .wait();
 
         Ok(result_texture)
     }

@@ -6,8 +6,8 @@ use hybrid_renderer::{
         texture_builder::TextureBuilder,
     },
     renderer::{
-        Renderer, RenderingEnvironment,
-        materials::{MaterialFactory, sprite_material::SpriteMaterialDescriptor},
+        RendererSystem, RenderingEnvironment,
+        materials::{MaterialFactory, SpriteMaterialDescriptor},
     },
     stage::Stage,
     util::geometry_generator::MeshUtil,
@@ -98,8 +98,7 @@ pub fn run() {
     file.read_to_end(&mut diffuse_bytes).unwrap();
 
     let render_context = RenderContext::new(device, queue, surface, config);
-    let mut render_env = RenderingEnvironment::new(render_context);
-    let mut renderer = Renderer::new(&mut render_env);
+    let mut render_env = RenderingEnvironment::create_and_initialize(render_context);
 
     let sprite_texture = Arc::new(
         TextureBuilder::new(
@@ -176,7 +175,7 @@ pub fn run() {
                 }
 
                 let frame_data = stage.make_frame_data();
-                renderer.render(&mut render_env, &frame_data);
+                RendererSystem::render(&mut render_env, &frame_data);
             }
             Event::AboutToWait => {
                 window.request_redraw();

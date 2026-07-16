@@ -12,7 +12,7 @@ use crate::renderer::compute_task::{
     DiffuseIrradianceProvider, EquirectToCubemapProvider, MipmapGeneratorProvider,
     SpecularPrefilterProvider,
 };
-use crate::renderer::materials::pbr_material::PhysicalMaterialDescriptor;
+use crate::renderer::materials::PhysicalMaterialDescriptor;
 use crate::renderer::materials::{MaterialFactory, SkydomeMaterialDescriptor};
 use crate::util::geometry_generator::MeshUtil;
 use std::fs::File;

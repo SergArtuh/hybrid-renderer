@@ -1,15 +1,12 @@
 use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
-use std::time::Instant;
 use wgpu::util::DeviceExt;
 use winit::{event::*, event_loop::EventLoop, window::WindowBuilder};
 
 use hybrid_renderer::core::{
-    material::{Material, SpriteMaterial},
-    material_builder::SpriteMaterialBuilder,
-    render_context::RenderContext,
-    texture_builder::TextureBuilder,
+    material_builder::SpriteMaterialBuilder, render_context::RenderContext,
+    texture::DefaultTextures, texture_builder::TextureBuilder,
 };
 
 const SHADER_SOURCE: &str = r#"
@@ -284,10 +281,29 @@ pub fn run() {
                 label: Some("texture_bind_group_layout"),
             });
 
+    let default_textures = DefaultTextures::new(&render_context.device, &render_context.queue);
+
+    let common_nearest_sampler = render_context
+        .device
+        .create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            address_mode_w: wgpu::AddressMode::Repeat,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
     let sprite_material = SpriteMaterialBuilder::new()
         .with_texture(Arc::clone(&sprite_texture))
         .with_grid_size(1, 1)
-        .build(&render_context, &texture_bind_group_layout);
+        .build(
+            &render_context,
+            &texture_bind_group_layout,
+            &default_textures,
+            &common_nearest_sampler,
+        );
     //let sprite_material = SpriteMaterial::new(sprite_texture.view, 1, 1, &device);
 
     // let texture_bind_group = render_context

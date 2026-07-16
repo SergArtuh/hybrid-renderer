@@ -1,4 +1,4 @@
-use crate::core::render_context::RenderContext;
+use crate::renderer::RenderingEnvironment;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ComputeTaskType {
@@ -20,7 +20,7 @@ pub trait ComputeTaskTrait: Sized {
     const TYPE: ComputeTaskType;
 
     fn create_instance(
-        _render_context: &RenderContext,
+        _render_env: &RenderingEnvironment,
         _desc: Self::Descriptor,
         _layout: &wgpu::BindGroupLayout,
     ) -> Result<ComputeTaskInstance, anyhow::Error> {

@@ -11,7 +11,7 @@ use hybrid_renderer::assets::camera::Camera;
 use hybrid_renderer::core::math::Vec3;
 use hybrid_renderer::core::mesh::Mesh;
 use hybrid_renderer::core::render_context::RenderContext;
-use hybrid_renderer::renderer::{Renderer, RenderingEnvironment};
+use hybrid_renderer::renderer::{RendererSystem, RenderingEnvironment};
 use hybrid_renderer::stage::Stage;
 use hybrid_renderer::util::geometry_generator::MeshUtil;
 
@@ -88,8 +88,7 @@ pub fn run() {
     surface.configure(&device, &config);
 
     let render_context = RenderContext::new(device, queue, surface, config);
-    let mut render_env = RenderingEnvironment::new(render_context);
-    let mut renderer = Renderer::new(&mut render_env);
+    let mut render_env = RenderingEnvironment::create_and_initialize(render_context);
 
     let camera = Camera::new(Vec3::new(0.0, 0.0, CAMERA_DISTANCE))
         .with_target(Vec3::new(0.0, 0.0, 0.0))
@@ -129,7 +128,7 @@ pub fn run() {
                 stage.main_camera.position.x = camera_x;
                 stage.main_camera.position.z = camera_z;
                 let frame_data = stage.make_frame_data();
-                renderer.render(&mut render_env, &frame_data);
+                RendererSystem::render(&mut render_env, &frame_data);
             }
             Event::AboutToWait => {
                 window.request_redraw();

@@ -1,11 +1,8 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use crate::{
-    core::{
-        compute_task::{ComputeTaskInstance, ComputeTaskTrait},
-        render_context::RenderContext,
-    },
-    renderer::{RenderingEnvironment, pipeline_manager::PipelineManager},
+    core::compute_task::{ComputeTaskInstance, ComputeTaskTrait},
+    renderer::{RenderingEnvironment, pipeline_system::PipelineSystem},
 };
 
 pub mod equirect_to_cubemap;
@@ -32,6 +29,29 @@ pub use mipmap_generator::Provider as MipmapGeneratorProvider;
 pub use mipmap_generator::Task as MipmapGeneratorTask;
 pub use mipmap_generator::TaskDescriptor as MipmapGeneratorTaskDescriptor;
 
+pub fn initialize_compute_tasks(render_env: &mut RenderingEnvironment) {
+    render_env.pipeline_resources.base_compute_shaders_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("renderer")
+            .join("shaders")
+            .join("compute");
+
+    macro_rules! register {
+        ($($t:ty),* $(,)?) => {
+            $( crate::renderer::pipeline_system::PipelineSystem::register_compute_pipeline::<$t>(render_env); )*
+        };
+    }
+
+    register![
+        EquirectToCubemapTask,
+        ClearCubemapTask,
+        DiffuseIrradianceTask,
+        MipmapGeneratorTask,
+        SpecularPrefilterTask
+    ];
+}
+
 pub struct ComputeTaskFactory<'a> {
     render_env: &'a RenderingEnvironment<'a>,
 }
@@ -44,46 +64,46 @@ impl<'a> ComputeTaskFactory<'a> {
     pub fn create_task<T: ComputeTaskTrait>(&self, desc: T::Descriptor) -> ComputeTaskInstance {
         let bind_group_layout = Arc::clone(
             self.render_env
-                .layout_interface
+                .pipeline_resources
                 .compute_tasks
                 .get(&T::TYPE)
                 .expect("Layout not found for compute task type {T::TYPE}"),
         );
-        T::create_instance(&self.render_env.render_context, desc, &bind_group_layout)
+        T::create_instance(&self.render_env, desc, &bind_group_layout)
             .expect("Failed to create compute task instance")
     }
 
     pub fn create_executor(&self) -> ComputeExecutor<'_> {
-        ComputeExecutor::new(&self.render_env.pipeline_manager)
+        ComputeExecutor::new(&self.render_env)
     }
 
     pub fn create_executor_from_encoder(
         &self,
         encoder: wgpu::CommandEncoder,
     ) -> ComputeExecutor<'_> {
-        ComputeExecutor::from_encoder(&self.render_env.pipeline_manager, encoder)
+        ComputeExecutor::from_encoder(&self.render_env, encoder)
     }
 }
 
 pub struct ComputeExecutor<'a> {
-    pipeline_manager: &'a PipelineManager,
+    render_env: &'a RenderingEnvironment<'a>,
     encoder: Option<wgpu::CommandEncoder>,
 }
 
 impl<'a> ComputeExecutor<'a> {
-    pub fn new(pipeline_manager: &'a PipelineManager) -> Self {
+    pub fn new(render_env: &'a RenderingEnvironment<'a>) -> Self {
         Self {
-            pipeline_manager,
+            render_env,
             encoder: None,
         }
     }
 
     pub fn from_encoder(
-        pipeline_manager: &'a PipelineManager,
+        render_env: &'a RenderingEnvironment<'a>,
         encoder: wgpu::CommandEncoder,
     ) -> Self {
         Self {
-            pipeline_manager,
+            render_env,
             encoder: Some(encoder),
         }
     }
@@ -92,16 +112,11 @@ impl<'a> ComputeExecutor<'a> {
         self.encoder.take()
     }
 
-    pub fn record(
-        &mut self,
-        render_context: &RenderContext,
-        task_instance: &ComputeTaskInstance,
-    ) -> &mut Self {
-        let pipeline = self
-            .pipeline_manager
-            .get_compute_pipeline(task_instance.task_type);
+    pub fn record(&mut self, task_instance: &ComputeTaskInstance) -> &mut Self {
+        let pipeline =
+            PipelineSystem::get_compute_pipeline(self.render_env, task_instance.task_type);
 
-        let encoder = self.get_or_create_encoder(render_context);
+        let encoder = self.get_or_create_encoder();
         {
             let mut cpass = encoder.begin_compute_pass(&Default::default());
             cpass.set_pipeline(pipeline);
@@ -116,30 +131,32 @@ impl<'a> ComputeExecutor<'a> {
         self
     }
 
-    pub fn execute(&mut self, render_context: &RenderContext) -> &mut Self {
+    pub fn execute(&mut self) -> &mut Self {
         if let Some(encoder) = self.encoder.take() {
-            render_context
+            self.render_env
+                .render_context
                 .queue
                 .submit(std::iter::once(encoder.finish()));
         }
         self
     }
 
-    pub fn wait(&self, render_context: &RenderContext) {
-        render_context.device.poll(wgpu::Maintain::Wait);
+    pub fn wait(&self) {
+        self.render_env
+            .render_context
+            .device
+            .poll(wgpu::Maintain::Wait);
     }
 
     pub fn get_encoder_mut(&mut self) -> Option<&mut wgpu::CommandEncoder> {
         self.encoder.as_mut()
     }
 
-    fn get_or_create_encoder(
-        &mut self,
-        render_context: &RenderContext,
-    ) -> &mut wgpu::CommandEncoder {
+    fn get_or_create_encoder(&mut self) -> &mut wgpu::CommandEncoder {
         if self.encoder.is_none() {
             self.encoder = Some(
-                render_context
+                self.render_env
+                    .render_context
                     .device
                     .create_command_encoder(&Default::default()),
             );

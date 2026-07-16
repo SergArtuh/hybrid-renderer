@@ -1,10 +1,7 @@
 use wgpu::DynamicOffset;
 
 use crate::{
-    renderer::{
-        layout_interface::{GlobalResources, ModelResources},
-        pipeline_manager::PipelineManager,
-    },
+    renderer::{RenderingEnvironment, pipeline_system::PipelineSystem},
     stage::frame_data::{FrameData, RenderItem},
 };
 
@@ -19,12 +16,10 @@ impl ForwardPass {
     pub fn execute<'a>(
         &'a self,
         rpass: &mut wgpu::RenderPass<'a>,
-        pipeline_manager: &'a PipelineManager,
-        global_resources: &'a GlobalResources,
-        model_resources: &'a ModelResources,
+        render_env: &'a RenderingEnvironment,
         frame_data: &'a FrameData,
     ) {
-        let stride = model_resources.stride as DynamicOffset;
+        let stride = render_env.render_resources.model_resources.stride as DynamicOffset;
         for (i, renderable) in frame_data.render_items.iter().enumerate() {
             match renderable {
                 RenderItem::StaticMesh {
@@ -33,24 +28,40 @@ impl ForwardPass {
                     world_matrix: _,
                 } => match (&mesh.vertex_buffer, &mesh.index_buffer) {
                     (Some(vertex_buffer), Some(index_buffer)) => {
-                        let pipeline = pipeline_manager.get_pipeline(&material);
+                        let pipeline = PipelineSystem::get_pipeline(render_env, material);
 
                         let offset = (i as DynamicOffset) * stride;
 
                         rpass.set_pipeline(&pipeline);
                         rpass.set_vertex_buffer(0, vertex_buffer.slice(..));
                         rpass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                        rpass.set_bind_group(0, &global_resources.bind_group, &[]);
-                        rpass.set_bind_group(1, &model_resources.bind_group, &[offset]);
+                        rpass.set_bind_group(
+                            0,
+                            &render_env.render_resources.global_resources.bind_group,
+                            &[],
+                        );
+                        rpass.set_bind_group(
+                            1,
+                            &render_env.render_resources.model_resources.bind_group,
+                            &[offset],
+                        );
                         rpass.set_bind_group(2, &material.bind_group(), &[]);
 
                         rpass.draw_indexed(0..mesh.index_count, 0, 0..1);
                     }
                     (None, None) => {
-                        let pipeline = pipeline_manager.get_pipeline(&material);
+                        let pipeline = PipelineSystem::get_pipeline(render_env, &material);
                         rpass.set_pipeline(&pipeline);
-                        rpass.set_bind_group(0, &global_resources.bind_group, &[]);
-                        rpass.set_bind_group(1, &model_resources.bind_group, &[0u32]);
+                        rpass.set_bind_group(
+                            0,
+                            &render_env.render_resources.global_resources.bind_group,
+                            &[],
+                        );
+                        rpass.set_bind_group(
+                            1,
+                            &render_env.render_resources.model_resources.bind_group,
+                            &[0u32],
+                        );
                         rpass.set_bind_group(2, &material.bind_group(), &[]);
 
                         rpass.draw(0..mesh.index_count, 0..1);
@@ -61,10 +72,18 @@ impl ForwardPass {
         }
 
         if let Some(skydome) = &frame_data.skydome {
-            let pipeline = pipeline_manager.get_pipeline(&skydome.material);
+            let pipeline = PipelineSystem::get_pipeline(render_env, &skydome.material);
             rpass.set_pipeline(&pipeline);
-            rpass.set_bind_group(0, &global_resources.bind_group, &[]);
-            rpass.set_bind_group(1, &model_resources.bind_group, &[0u32]);
+            rpass.set_bind_group(
+                0,
+                &render_env.render_resources.global_resources.bind_group,
+                &[],
+            );
+            rpass.set_bind_group(
+                1,
+                &render_env.render_resources.model_resources.bind_group,
+                &[0u32],
+            );
             rpass.set_bind_group(2, &skydome.material.bind_group(), &[]);
 
             match (&skydome.mesh.vertex_buffer, &skydome.mesh.index_buffer) {

@@ -3,7 +3,6 @@ use std::sync::Arc;
 use crate::{
     core::{
         compute_task::{ComputeTaskInstance, ComputeTaskTrait, ComputeTaskType},
-        render_context::RenderContext,
         texture::Texture,
         texture_builder::TextureBuilder,
     },
@@ -54,7 +53,7 @@ impl ComputeTaskTrait for Task {
     }
 
     fn create_instance(
-        render_context: &RenderContext,
+        render_env: &RenderingEnvironment,
         desc: Self::Descriptor,
         layout: &wgpu::BindGroupLayout,
     ) -> Result<ComputeTaskInstance, anyhow::Error> {
@@ -80,22 +79,24 @@ impl ComputeTaskTrait for Task {
                     ..Default::default()
                 });
 
-        let bind_group = render_context
-            .device
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&current_mip_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&target_mip_view),
-                    },
-                ],
-                label: Some("Clear Cubemap Bind Group"),
-            });
+        let bind_group =
+            render_env
+                .render_context
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(&current_mip_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(&target_mip_view),
+                        },
+                    ],
+                    label: Some("Clear Cubemap Bind Group"),
+                });
 
         let mip_width = desc.output_texture.width;
         let mip_height = desc.output_texture.height;
@@ -204,9 +205,9 @@ impl<'a> Provider<'a> {
 
             compute_task_factory
                 .create_executor()
-                .record(&self.render_env.render_context, &mipmap_task)
-                .execute(&self.render_env.render_context)
-                .wait(&self.render_env.render_context);
+                .record(&mipmap_task)
+                .execute()
+                .wait();
 
             let mut copy_encoder = self
                 .render_env

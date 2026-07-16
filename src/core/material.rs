@@ -1,5 +1,4 @@
-use crate::core::render_context::RenderContext;
-use std::{cell::Cell, sync::Arc};
+use std::{cell::Cell, path::PathBuf, sync::Arc};
 
 #[derive(Hash, Eq, PartialEq, Debug, Clone, Copy)]
 pub enum MaterialType {
@@ -39,16 +38,27 @@ impl Material {
 
 pub trait MaterialTrait: Sized {
     type Descriptor;
+    type Definition;
     const TYPE: MaterialType;
     const DOMAIN: MaterialDomain;
-    fn get_layout() -> &'static [wgpu::VertexBufferLayout<'static>];
-    fn create(
-        _context: &RenderContext,
-        _desc: Self::Descriptor,
-        _layout: &wgpu::BindGroupLayout,
-    ) -> Result<Self, anyhow::Error> {
-        todo!()
+    const LAYOUT: &[wgpu::VertexBufferLayout<'static>];
+
+    fn get_shader_path() -> &'static str;
+
+    fn get_definition() -> MaterialDefinition {
+        MaterialDefinition {
+            shader_path: Self::get_shader_path().into(),
+            material_type: Self::TYPE,
+            layout: Self::LAYOUT,
+        }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct MaterialDefinition {
+    pub shader_path: PathBuf,
+    pub material_type: MaterialType,
+    pub layout: &'static [wgpu::VertexBufferLayout<'static>],
 }
 
 #[repr(C)]

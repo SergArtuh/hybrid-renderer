@@ -1,122 +1,115 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
     core::{
-        compute_task::ComputeTaskType,
-        material::MaterialType,
         render_context::RenderContext,
+        texture::DefaultTextures,
         uniforms::{CameraUniform, ModelUniform},
+    },
+    renderer::{
+        passes::forward::ForwardPass, pipeline_resources::PipelineResources,
+        pipeline_system::PipelineSystem,
     },
     stage::frame_data::RenderItem,
 };
 
-pub struct LayoutInterface {
-    pub global: wgpu::BindGroupLayout,
-    pub model: wgpu::BindGroupLayout,
-    pub materials: HashMap<MaterialType, Arc<wgpu::BindGroupLayout>>,
-    pub compute_tasks: HashMap<ComputeTaskType, Arc<wgpu::BindGroupLayout>>,
-    pub pipeline_layouts: HashMap<MaterialType, wgpu::PipelineLayout>,
-    pub compute_pipeline_layouts: HashMap<ComputeTaskType, wgpu::PipelineLayout>,
+pub struct RenderResources {
+    pub forward_pass: ForwardPass,
+    pub global_resources: GlobalResources,
+    pub model_resources: ModelResources,
+    pub depth_texture_view: wgpu::TextureView,
+    pub default_textures: DefaultTextures,
+    pub common_sampler: wgpu::Sampler,
+    pub common_nearest_sampler: wgpu::Sampler,
 }
 
-impl LayoutInterface {
-    pub fn new(render_context: &RenderContext) -> Self {
-        let global =
+impl RenderResources {
+    pub fn new(render_context: &RenderContext, pipeline_resources: &PipelineResources) -> Self {
+        render_context
+            .device
+            .push_error_scope(wgpu::ErrorFilter::Validation);
+
+        let default_textures = DefaultTextures::new(&render_context.device, &render_context.queue);
+        let common_sampler = render_context
+            .device
+            .create_sampler(&wgpu::SamplerDescriptor {
+                address_mode_u: wgpu::AddressMode::Repeat,
+                address_mode_v: wgpu::AddressMode::Repeat,
+                address_mode_w: wgpu::AddressMode::Repeat,
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                mipmap_filter: wgpu::FilterMode::Linear,
+                ..Default::default()
+            });
+        let common_nearest_sampler =
             render_context
                 .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    entries: &[
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Uniform,
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 1,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Texture {
-                                multisampled: false,
-                                view_dimension: wgpu::TextureViewDimension::Cube,
-                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 2,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 3,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Texture {
-                                multisampled: false,
-                                view_dimension: wgpu::TextureViewDimension::Cube,
-                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 4,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Texture {
-                                multisampled: false,
-                                view_dimension: wgpu::TextureViewDimension::Cube,
-                                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            },
-                            count: None,
-                        },
-                    ],
-                    label: Some("global_bind_group_layout"),
+                .create_sampler(&wgpu::SamplerDescriptor {
+                    address_mode_u: wgpu::AddressMode::Repeat,
+                    address_mode_v: wgpu::AddressMode::Repeat,
+                    address_mode_w: wgpu::AddressMode::Repeat,
+                    mag_filter: wgpu::FilterMode::Nearest,
+                    min_filter: wgpu::FilterMode::Nearest,
+                    mipmap_filter: wgpu::FilterMode::Nearest,
+                    ..Default::default()
                 });
 
-        let model =
-            render_context
-                .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    entries: &[wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: true,
-                            min_binding_size: wgpu::BufferSize::new(
-                                std::mem::size_of::<ModelUniform>() as _,
-                            ),
-                            // has_dynamic_offset: false,
-                            // min_binding_size: None,
-                        },
-                        count: None,
-                    }],
-                    label: Some("model_layout"),
-                });
+        let global_resources = GlobalResources::new(
+            render_context,
+            &default_textures,
+            &common_sampler,
+            &pipeline_resources.global,
+        );
+        let model_resources = ModelResources::new(render_context, &pipeline_resources.model);
+        let depth_texture_view = Self::create_depth_texture(render_context);
+
+        let forward_pass = ForwardPass::default();
 
         Self {
-            global,
-            model,
-            materials: HashMap::new(),
-            compute_tasks: HashMap::new(),
-            pipeline_layouts: HashMap::new(),
-            compute_pipeline_layouts: HashMap::new(),
+            forward_pass,
+            global_resources,
+            model_resources,
+            depth_texture_view,
+            default_textures,
+            common_sampler,
+            common_nearest_sampler,
         }
+    }
+
+    fn create_depth_texture(render_context: &RenderContext) -> wgpu::TextureView {
+        let size = wgpu::Extent3d {
+            width: render_context.config.width,
+            height: render_context.config.height,
+            depth_or_array_layers: 1,
+        };
+        let desc = wgpu::TextureDescriptor {
+            label: Some("Depth Texture"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: PipelineSystem::DEPTH_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        };
+        let texture = render_context.device.create_texture(&desc);
+        texture.create_view(&wgpu::TextureViewDescriptor::default())
     }
 }
 
 pub struct GlobalResources {
     pub camera_uniform_buffer: wgpu::Buffer,
     pub skybox_texture: Arc<wgpu::TextureView>,
-    //pub skybox_sampler: Arc<wgpu::Sampler>,
     pub bind_group: wgpu::BindGroup,
 }
 
 impl GlobalResources {
-    pub fn new(render_context: &RenderContext, bind_group_layout: &wgpu::BindGroupLayout) -> Self {
+    pub fn new(
+        render_context: &RenderContext,
+        default_textures: &DefaultTextures,
+        common_sampler: &wgpu::Sampler,
+        bind_group_layout: &wgpu::BindGroupLayout,
+    ) -> Self {
         let camera_uniform_buffer = render_context
             .device
             .create_buffer(&wgpu::BufferDescriptor {
@@ -126,11 +119,11 @@ impl GlobalResources {
                 mapped_at_creation: false,
             });
 
-        let skybox_texture = Arc::clone(&render_context.default_textures.cubemap.view);
+        let skybox_texture = Arc::clone(&default_textures.cubemap.view);
 
-        let irradiance_texture = Arc::clone(&render_context.default_textures.cubemap.view);
+        let irradiance_texture = Arc::clone(&default_textures.cubemap.view);
 
-        let specular_texture = Arc::clone(&render_context.default_textures.cubemap.view);
+        let specular_texture = Arc::clone(&default_textures.cubemap.view);
 
         let bind_group = Self::create_global_bind_group(
             render_context,
@@ -139,13 +132,12 @@ impl GlobalResources {
             &skybox_texture,
             &irradiance_texture,
             &specular_texture,
-            &render_context.common_sampler,
+            &common_sampler,
         );
 
         Self {
             camera_uniform_buffer,
             skybox_texture,
-            // skybox_sampler,
             bind_group,
         }
     }
@@ -169,6 +161,7 @@ impl GlobalResources {
         skybox_texture: Arc<wgpu::TextureView>,
         irradiance_texture: Arc<wgpu::TextureView>,
         specular_texture: Arc<wgpu::TextureView>,
+        common_sampler: &wgpu::Sampler,
     ) {
         if Arc::ptr_eq(&self.skybox_texture, &skybox_texture) {
             return;
@@ -182,7 +175,7 @@ impl GlobalResources {
             &self.skybox_texture,
             &irradiance_texture,
             &specular_texture,
-            &render_context.common_sampler,
+            &common_sampler,
         );
     }
 

@@ -2,43 +2,92 @@ pub mod pbr_material;
 pub mod skydome_material;
 pub mod sprite_material;
 
-pub use pbr_material::PbrMaterialDefinition;
-pub use skydome_material::SkydomeMaterialDescriptor;
-pub use sprite_material::SpriteMaterialDefinition;
+use std::path::PathBuf;
+use std::sync::Arc;
 
+pub use pbr_material::Definition as PbrMaterialDefinition;
+pub use pbr_material::Descriptor as PhysicalMaterialDescriptor;
+
+pub use skydome_material::Definition as SkydomeMaterialDefinition;
+pub use skydome_material::Descriptor as SkydomeMaterialDescriptor;
+
+pub use sprite_material::Definition as SpriteMaterialDefinition;
+pub use sprite_material::Descriptor as SpriteMaterialDescriptor;
+
+use crate::core::material::SkydomeEnvironmentMaterial;
+use crate::core::material::SpriteMaterial;
 use crate::core::material::{Material, MaterialTrait, PhysicalMaterial};
-use crate::core::render_context::RenderContext;
 use crate::renderer::RenderingEnvironment;
-use crate::renderer::layout_interface::LayoutInterface;
-use crate::renderer::materials::pbr_material::PhysicalMaterialDescriptor;
-use crate::renderer::pipeline_manager::PipelineDefinition;
+
+pub fn initialize_materials(render_env: &mut RenderingEnvironment) {
+    render_env.pipeline_resources.base_shaders_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("src")
+        .join("renderer")
+        .join("shaders")
+        .join("surface");
+
+    macro_rules! register {
+        ($($t:ty),* $(,)?) => {
+            $( crate::renderer::pipeline_system::PipelineSystem::register_pipeline::<$t>(render_env); )*
+        };
+    }
+
+    register![PhysicalMaterial, SkydomeEnvironmentMaterial, SpriteMaterial];
+}
 
 const DEFAULT_DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
-pub struct PipelineVisitorEnvironment<'a> {
-    pub(crate) pipeline_definition: &'a PipelineDefinition,
-    pub context: &'a RenderContext<'a>,
-    pub layout: &'a mut LayoutInterface,
-}
 
 pub struct MaterialFactory<'a> {
     render_env: &'a RenderingEnvironment<'a>,
 }
 
+pub struct MaterialPipelineResult {
+    pub bind_group_layout: Arc<wgpu::BindGroupLayout>,
+    pub render_pipeline: wgpu::RenderPipeline,
+    pub pipeline_layout: wgpu::PipelineLayout,
+}
+
+pub trait HasDefinition: MaterialTrait {
+    type Def: MaterialDefinitionTrait<Self>;
+}
+
+pub trait MaterialDefinitionTrait<M: MaterialTrait> {
+    fn create_instance(
+        render_env: &RenderingEnvironment,
+        desc: M::Descriptor,
+        layout: &wgpu::BindGroupLayout,
+    ) -> M
+    where
+        M: HasDefinition;
+    fn create_pipeline(
+        render_env: &RenderingEnvironment,
+    ) -> Result<MaterialPipelineResult, anyhow::Error>;
+}
+
 impl<'a> MaterialFactory<'a> {
-    pub fn new(render_env: &'a RenderingEnvironment) -> Self {
+    pub fn new(render_env: &'a RenderingEnvironment<'a>) -> Self {
         Self { render_env }
     }
 
-    pub fn create_material<M: MaterialTrait>(&self, desc: M::Descriptor) -> M {
-        let layout_interface = &self.render_env.layout_interface;
-        let render_context = &self.render_env.render_context;
+    pub fn create_material<M: MaterialTrait>(&self, desc: M::Descriptor) -> M
+    where
+        M: HasDefinition,
+    {
+        let pipeline_resources = &self.render_env.pipeline_resources;
 
-        let bind_group_layout = layout_interface
+        let bind_group_layout = pipeline_resources
             .materials
             .get(&M::TYPE)
             .expect("Layout not found for material type {M::TYPE}");
-        M::create(render_context, desc, &bind_group_layout)
-            .expect("Failed to create material instance")
+
+        <<M as HasDefinition>::Def>::create_instance(self.render_env, desc, bind_group_layout)
+    }
+
+    pub fn create_pipeline<M: MaterialTrait>(self) -> Result<MaterialPipelineResult, anyhow::Error>
+    where
+        M: HasDefinition,
+    {
+        <<M as HasDefinition>::Def>::create_pipeline(self.render_env)
     }
 
     pub fn create_default_material(&self) -> Material {

@@ -3,6 +3,7 @@ use hybrid_renderer::assets::model::Model;
 use hybrid_renderer::input::camera_controller::{
     OrbitCameraController, OrbitCameraControllerDescriptor,
 };
+
 use std::sync::Arc;
 use std::time::Instant;
 use winit::event::{Event, WindowEvent};
@@ -12,13 +13,14 @@ use winit::window::WindowBuilder;
 use hybrid_renderer::assets::camera::Camera;
 use hybrid_renderer::core::math::Vec3;
 use hybrid_renderer::core::render_context::RenderContext;
-use hybrid_renderer::renderer::{Renderer, RenderingEnvironment};
+use hybrid_renderer::renderer::{RendererSystem, RenderingEnvironment};
 use hybrid_renderer::stage::Stage;
 
 //const CAMERA_DISTANCE: f32 = 250.0;
 const CAMERA_DISTANCE: f32 = 5.0;
 
 pub fn run() {
+    unsafe { std::env::set_var("RUST_BACKTRACE", "1") };
     let event_loop = EventLoop::new().unwrap();
     let window = Arc::new(
         WindowBuilder::new()
@@ -104,8 +106,8 @@ pub fn run() {
     });
 
     let render_context = RenderContext::new(device, queue, surface, config);
-    let mut render_env = RenderingEnvironment::new(render_context);
-    let mut renderer = Renderer::new(&mut render_env);
+    let mut render_env = RenderingEnvironment::create_and_initialize(render_context);
+    //let mut renderer = RendererSystem::new(&render_env);
 
     let asset_manager = AssetManager::new(&render_env);
 
@@ -180,7 +182,7 @@ pub fn run() {
                 camera_controller.update_camera(&mut stage.main_camera, delta_time);
 
                 let frame_data = stage.make_frame_data();
-                renderer.render(&mut render_env, &frame_data);
+                RendererSystem::render(&mut render_env, &frame_data);
             }
             Event::AboutToWait => {
                 window.request_redraw();

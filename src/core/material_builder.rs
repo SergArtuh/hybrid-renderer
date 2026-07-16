@@ -7,7 +7,7 @@ use wgpu::util::DeviceExt;
 use crate::core::{
     material::{PhysicalMaterial, SpriteMaterial, SpriteSheetUniform},
     render_context::RenderContext,
-    texture::Texture,
+    texture::{DefaultTextures, Texture},
 };
 
 pub struct PhysicalMaterialBuilder {
@@ -57,32 +57,34 @@ impl PhysicalMaterialBuilder {
     pub fn build(
         self,
         render_context: &RenderContext,
+        default_textures: &DefaultTextures,
+        common_sampler: &wgpu::Sampler,
         layout: &wgpu::BindGroupLayout,
     ) -> PhysicalMaterial {
         let base_color = self
             .base_color
             .map(|t| Arc::clone(&t.view))
-            .unwrap_or_else(|| Arc::clone(&render_context.default_textures.white));
+            .unwrap_or_else(|| Arc::clone(&default_textures.white));
 
         let normal = self
             .normal
             .map(|t| Arc::clone(&t.view))
-            .unwrap_or_else(|| Arc::clone(&render_context.default_textures.normal));
+            .unwrap_or_else(|| Arc::clone(&default_textures.normal));
 
         let metallic_roughness = self
             .metallic_roughness
             .map(|t| Arc::clone(&t.view))
-            .unwrap_or_else(|| Arc::clone(&render_context.default_textures.black_metallic));
+            .unwrap_or_else(|| Arc::clone(&default_textures.black_metallic));
 
         let emissive = self
             .emissive
             .map(|t| Arc::clone(&t.view))
-            .unwrap_or_else(|| Arc::clone(&render_context.default_textures.black));
+            .unwrap_or_else(|| Arc::clone(&default_textures.black));
 
         let occlusion = self
             .occlusion
             .map(|t| Arc::clone(&t.view))
-            .unwrap_or_else(|| Arc::clone(&render_context.default_textures.white));
+            .unwrap_or_else(|| Arc::clone(&default_textures.white));
 
         let bind_group = render_context
             .device
@@ -112,7 +114,7 @@ impl PhysicalMaterialBuilder {
                     },
                     wgpu::BindGroupEntry {
                         binding: 5,
-                        resource: wgpu::BindingResource::Sampler(&render_context.common_sampler),
+                        resource: wgpu::BindingResource::Sampler(&common_sampler),
                     },
                 ],
             });
@@ -158,13 +160,15 @@ impl SpriteMaterialBuilder {
         self,
         render_context: &RenderContext,
         layout: &wgpu::BindGroupLayout,
+        default_textures: &DefaultTextures,
+        common_nearest_sampler: &wgpu::Sampler,
     ) -> SpriteMaterial {
         let texture = self
             .texture
             .map(|t| Arc::clone(&t.view))
             .unwrap_or_else(|| {
                 println!("Texture is not defined. Using white texture for sprite material");
-                Arc::clone(&render_context.default_textures.white)
+                Arc::clone(&default_textures.white)
             });
 
         let config = SpriteSheetUniform {
@@ -191,9 +195,7 @@ impl SpriteMaterialBuilder {
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: wgpu::BindingResource::Sampler(
-                            &render_context.common_nearest_sampler,
-                        ),
+                        resource: wgpu::BindingResource::Sampler(&common_nearest_sampler),
                     },
                     wgpu::BindGroupEntry {
                         binding: 2,

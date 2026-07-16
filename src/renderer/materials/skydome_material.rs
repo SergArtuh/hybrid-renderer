@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use anyhow::Context;
 use wgpu::util::DeviceExt;
@@ -8,15 +8,19 @@ use crate::{
         material::{
             EnvironmentMap, MaterialDomain, MaterialTrait, MaterialType, SkydomeEnvironmentMaterial,
         },
-        render_context::RenderContext,
         texture::Texture,
         uniforms::SkydomeUniform,
         vertex::Vertex,
     },
-    renderer::materials::{DEFAULT_DEPTH_FORMAT, PipelineVisitorEnvironment},
+    renderer::{
+        RenderingEnvironment,
+        materials::{
+            DEFAULT_DEPTH_FORMAT, HasDefinition, MaterialDefinitionTrait, MaterialPipelineResult,
+        },
+    },
 };
 
-pub struct SkydomeMaterialDescriptor {
+pub struct Descriptor {
     pub skybox_texture: Arc<Texture>,
     pub irradiance_texture: Arc<Texture>,
     pub specular_texture: Arc<Texture>,
@@ -25,57 +29,53 @@ pub struct SkydomeMaterialDescriptor {
 }
 
 impl MaterialTrait for SkydomeEnvironmentMaterial {
-    type Descriptor = SkydomeMaterialDescriptor;
+    type Descriptor = Descriptor;
+    type Definition = Definition;
     const DOMAIN: MaterialDomain = MaterialDomain::Environment;
     const TYPE: MaterialType = MaterialType::Skydome;
-    fn create(
-        context: &RenderContext,
-        desc: Self::Descriptor,
-        layout: &wgpu::BindGroupLayout,
-    ) -> Result<Self, anyhow::Error> {
-        let material_definition = SkydomeMaterialDefinition::default();
-        let material = material_definition.create_instance(context, desc, layout);
-        Ok(material)
-    }
+    const LAYOUT: &'static [wgpu::VertexBufferLayout<'static>] = &[Vertex::LAYOUT];
 
-    fn get_layout() -> &'static [wgpu::VertexBufferLayout<'static>] {
-        const LAYOUT: &[wgpu::VertexBufferLayout<'static>] = &[Vertex::LAYOUT];
-        LAYOUT
+    fn get_shader_path() -> &'static str {
+        "skydome.wgsl"
     }
 }
 #[derive(Default, Clone)]
-pub struct SkydomeMaterialDefinition;
+pub struct Definition;
 
-impl SkydomeMaterialDefinition {
-    pub fn create_instance(
-        &self,
-        render_context: &RenderContext,
-        desc: SkydomeMaterialDescriptor,
+impl HasDefinition for SkydomeEnvironmentMaterial {
+    type Def = Definition;
+}
+
+impl MaterialDefinitionTrait<SkydomeEnvironmentMaterial> for Definition {
+    fn create_instance(
+        render_env: &RenderingEnvironment,
+        desc: Descriptor,
         layout: &wgpu::BindGroupLayout,
     ) -> SkydomeEnvironmentMaterial {
         let skydome_uniform = SkydomeUniform::new(desc.dome_radius, desc.dome_factor);
 
-        let uniform_buffer =
-            render_context
-                .device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Skydome Uniform Buffer"),
-                    contents: bytemuck::cast_slice(&[skydome_uniform]),
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                });
+        let uniform_buffer = render_env.render_context.device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Skydome Uniform Buffer"),
+                contents: bytemuck::cast_slice(&[skydome_uniform]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            },
+        );
 
-        let bind_group = render_context
-            .device
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Buffer(
-                        uniform_buffer.as_entire_buffer_binding(),
-                    ),
-                }],
-                label: Some("Skybox material bind group"),
-            });
+        let bind_group =
+            render_env
+                .render_context
+                .device
+                .create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout,
+                    entries: &[wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Buffer(
+                            uniform_buffer.as_entire_buffer_binding(),
+                        ),
+                    }],
+                    label: Some("Skybox material bind group"),
+                });
 
         SkydomeEnvironmentMaterial {
             environment_map: EnvironmentMap {
@@ -87,26 +87,34 @@ impl SkydomeMaterialDefinition {
             bind_group,
         }
     }
-}
+    // }
 
-impl SkydomeMaterialDefinition {
-    pub fn create_pipeline(
-        environment: &mut PipelineVisitorEnvironment<'_>,
-    ) -> Result<wgpu::RenderPipeline, anyhow::Error> {
-        let render_context = environment.context;
-        let pipeline_definition = environment.pipeline_definition;
+    // impl SkydomeMaterialDefinition {
+    fn create_pipeline(
+        render_env: &RenderingEnvironment,
+    ) -> Result<MaterialPipelineResult, anyhow::Error> {
+        let render_context = &render_env.render_context;
+        let pipeline_definition = SkydomeEnvironmentMaterial::get_definition(); //environment.pipeline_definition;
         render_context
             .device
             .push_error_scope(wgpu::ErrorFilter::Validation);
-        let shader_path = &pipeline_definition.shader_path;
-        let source = std::fs::read_to_string(shader_path)
-            .with_context(|| format!("Failed to read shader file at {:?}", shader_path))?;
+        let shader_file_path = &pipeline_definition.shader_path;
+
+        let base_shaders_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("renderer")
+            .join("shaders")
+            .join("surface");
+
+        let shader_path = base_shaders_path.clone().join(shader_file_path);
+        let source = std::fs::read_to_string(&shader_path)
+            .with_context(|| format!("Failed to read shader file at {:?}", &shader_path))?;
 
         let label = shader_path
             .to_str()
             .context("Shader path contains invalid UTF-8 characters")?;
 
-        let material =
+        let bind_group_layout =
             render_context
                 .device
                 .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -129,9 +137,9 @@ impl SkydomeMaterialDefinition {
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: None,
                     bind_group_layouts: &[
-                        &environment.layout.global,
-                        &environment.layout.model,
-                        &material,
+                        &render_env.pipeline_resources.global,
+                        &render_env.pipeline_resources.model,
+                        &bind_group_layout,
                     ],
                     push_constant_ranges: &[],
                 });
@@ -181,16 +189,10 @@ impl SkydomeMaterialDefinition {
                     multiview: None,
                 });
 
-        environment
-            .layout
-            .pipeline_layouts
-            .insert(pipeline_definition.material_type, pipeline_layout);
-
-        environment
-            .layout
-            .materials
-            .insert(pipeline_definition.material_type, Arc::new(material));
-
-        Ok(pipeline)
+        Ok(MaterialPipelineResult {
+            bind_group_layout: Arc::new(bind_group_layout),
+            render_pipeline: pipeline,
+            pipeline_layout,
+        })
     }
 }
