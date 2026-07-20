@@ -15,7 +15,8 @@ use crate::{
     renderer::{
         RenderingEnvironment,
         materials::{
-            DEFAULT_DEPTH_FORMAT, HasDefinition, MaterialDefinitionTrait, MaterialPipelineResult,
+            DEFAULT_DEPTH_FORMAT, MaterialDefinitionTrait, MaterialHasDefinition,
+            MaterialPipelineResult,
         },
     },
 };
@@ -42,7 +43,7 @@ impl MaterialTrait for SkydomeEnvironmentMaterial {
 #[derive(Default, Clone)]
 pub struct Definition;
 
-impl HasDefinition for SkydomeEnvironmentMaterial {
+impl MaterialHasDefinition for SkydomeEnvironmentMaterial {
     type Def = Definition;
 }
 

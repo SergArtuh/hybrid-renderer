@@ -14,7 +14,8 @@ use crate::{
     renderer::{
         RenderingEnvironment,
         materials::{
-            DEFAULT_DEPTH_FORMAT, HasDefinition, MaterialDefinitionTrait, MaterialPipelineResult,
+            DEFAULT_DEPTH_FORMAT, MaterialDefinitionTrait, MaterialHasDefinition,
+            MaterialPipelineResult,
         },
     },
 };
@@ -38,7 +39,7 @@ impl MaterialTrait for SpriteMaterial {
 #[derive(Default, Clone)]
 pub struct Definition;
 
-impl HasDefinition for SpriteMaterial {
+impl MaterialHasDefinition for SpriteMaterial {
     type Def = Definition;
 }
 

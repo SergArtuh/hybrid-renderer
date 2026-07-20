@@ -13,7 +13,8 @@ use crate::{
     renderer::{
         RenderingEnvironment,
         materials::{
-            DEFAULT_DEPTH_FORMAT, HasDefinition, MaterialDefinitionTrait, MaterialPipelineResult,
+            DEFAULT_DEPTH_FORMAT, MaterialDefinitionTrait, MaterialHasDefinition,
+            MaterialPipelineResult,
         },
     },
 };
@@ -52,7 +53,7 @@ impl MaterialTrait for PhysicalMaterial {
 #[derive(Default, Clone)]
 pub struct Definition;
 
-impl HasDefinition for PhysicalMaterial {
+impl MaterialHasDefinition for PhysicalMaterial {
     type Def = Definition;
 }
 

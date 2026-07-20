@@ -29,13 +29,19 @@ impl<'a> RenderingEnvironment<'a> {
     fn new(render_context: RenderContext<'a>) -> Self {
         let pipeline_resources = PipelineResources::new(&render_context);
         let render_resources = RenderResources::new(&render_context, &pipeline_resources);
-        let shader_watcher_resources =
-            ShaderWatcherResources::create_and_initialize(&pipeline_resources);
+
+        let shader_watcher_resources = if cfg!(feature = "shader-hot-reload") {
+            Some(ShaderWatcherResources::create_and_initialize(
+                &pipeline_resources,
+            ))
+        } else {
+            None
+        };
         Self {
             render_context,
             pipeline_resources,
             render_resources,
-            shader_watcher_resources: Some(shader_watcher_resources),
+            shader_watcher_resources,
         }
     }
     pub fn create_and_initialize(render_context: RenderContext<'a>) -> Self {

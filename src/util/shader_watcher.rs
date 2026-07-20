@@ -7,10 +7,13 @@ use std::{
 use notify::{Event, RecursiveMode, Watcher};
 
 use crate::{
-    core::material::{MaterialTrait, MaterialType},
+    core::{
+        compute_task::{ComputeTaskTrait, ComputeTaskType},
+        material::{MaterialTrait, MaterialType},
+    },
     renderer::{
-        RenderingEnvironment, materials::HasDefinition, pipeline_resources::PipelineResources,
-        pipeline_system::PipelineSystem,
+        RenderingEnvironment, materials::MaterialHasDefinition,
+        pipeline_resources::PipelineResources, pipeline_system::PipelineSystem,
     },
 };
 
@@ -20,6 +23,7 @@ pub struct ShaderWatcherResources {
     modified_shaders: HashSet<PathBuf>,
     last_tick: Instant,
     material_rebuild_functions: HashMap<MaterialType, fn(&mut RenderingEnvironment)>,
+    compute_task_rebuild_functions: HashMap<ComputeTaskType, fn(&mut RenderingEnvironment)>,
 }
 
 impl ShaderWatcherResources {
@@ -35,12 +39,20 @@ impl ShaderWatcherResources {
             )
             .ok();
 
+        watcher
+            .watch(
+                &pipeline_resources.base_compute_shaders_path,
+                RecursiveMode::Recursive,
+            )
+            .ok();
+
         Self {
             _watcher: watcher,
             receiver: rx,
             modified_shaders: HashSet::new(),
             last_tick: Instant::now(),
             material_rebuild_functions: HashMap::new(),
+            compute_task_rebuild_functions: HashMap::new(),
         }
     }
 }
@@ -50,7 +62,7 @@ pub struct ShaderWatcherSystem;
 impl ShaderWatcherSystem {
     pub fn register_pipeline<T: MaterialTrait>(render_env: &mut RenderingEnvironment)
     where
-        T: HasDefinition,
+        T: MaterialHasDefinition,
     {
         render_env
             .shader_watcher_resources
@@ -58,6 +70,17 @@ impl ShaderWatcherSystem {
             .unwrap()
             .material_rebuild_functions
             .insert(T::TYPE, |env| PipelineSystem::register_pipeline::<T>(env));
+    }
+
+    pub fn register_compute_pipeline<T: ComputeTaskTrait>(render_env: &mut RenderingEnvironment) {
+        render_env
+            .shader_watcher_resources
+            .as_mut()
+            .unwrap()
+            .compute_task_rebuild_functions
+            .insert(T::TYPE, |env| {
+                PipelineSystem::register_compute_pipeline::<T>(env)
+            });
     }
 
     fn process_events(resources: &mut ShaderWatcherResources) {
@@ -84,17 +107,29 @@ impl ShaderWatcherSystem {
         if let Some(resources) = render_env.shader_watcher_resources.as_mut() {
             Self::process_events(resources);
             let mut modified_matterals = Vec::new();
+            let mut modified_compute_tasks = Vec::new();
 
             {
                 let modified_shaders = Self::get_modified_shaders(
                     render_env.shader_watcher_resources.as_mut().unwrap(),
                 );
+
                 let material_to_shader_registry =
                     &render_env.pipeline_resources.material_to_shader_registry;
 
                 for (material_type, shader_path) in material_to_shader_registry {
                     if modified_shaders.contains(&shader_path) {
                         modified_matterals.push(*material_type);
+                    }
+                }
+
+                let compute_task_to_shader_registry = &render_env
+                    .pipeline_resources
+                    .compute_task_to_shader_registry;
+
+                for (compute_task_type, shader_path) in compute_task_to_shader_registry {
+                    if modified_shaders.contains(&shader_path) {
+                        modified_compute_tasks.push(*compute_task_type);
                     }
                 }
             }
@@ -109,6 +144,19 @@ impl ShaderWatcherSystem {
                     .unwrap();
 
                 println!("Reloading material pipeline: {:?} ", material_type);
+                rebuild_func(render_env);
+            }
+
+            for compute_task_type in modified_compute_tasks {
+                let rebuild_func = render_env
+                    .shader_watcher_resources
+                    .as_ref()
+                    .unwrap()
+                    .compute_task_rebuild_functions
+                    .get(&compute_task_type)
+                    .unwrap();
+
+                println!("Reloading compute pipeline: {:?} ", compute_task_type);
                 rebuild_func(render_env);
             }
         }

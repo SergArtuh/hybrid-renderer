@@ -9,7 +9,7 @@ use crate::{
     },
     renderer::{
         RenderingEnvironment,
-        materials::{HasDefinition, MaterialFactory},
+        materials::{MaterialFactory, MaterialHasDefinition},
     },
 };
 
@@ -20,7 +20,7 @@ impl PipelineSystem {
 
     pub fn register_pipeline<T: MaterialTrait>(render_env: &mut RenderingEnvironment)
     where
-        T: HasDefinition,
+        T: MaterialHasDefinition,
     {
         let material_type = T::TYPE;
         let result = MaterialFactory::new(render_env).create_pipeline::<T>();
@@ -118,6 +118,11 @@ impl PipelineSystem {
             .pipeline_resources
             .compute_tasks
             .insert(task_type, Arc::new(bind_group_layout));
+
+        render_env
+            .pipeline_resources
+            .compute_task_to_shader_registry
+            .insert(task_type, shader_path);
     }
 
     pub fn get_pipeline<'a>(

@@ -29,7 +29,7 @@ pub fn initialize_materials(render_env: &mut RenderingEnvironment) {
     macro_rules! register {
         ($($t:ty),* $(,)?) => {
             $( crate::renderer::pipeline_system::PipelineSystem::register_pipeline::<$t>(render_env);
-            //#[cfg(feature = "shader-hot-reload")]
+            #[cfg(feature = "shader-hot-reload")]
             crate::util::shader_watcher::ShaderWatcherSystem::register_pipeline::<$t>(render_env);
          )*
         };
@@ -50,7 +50,7 @@ pub struct MaterialPipelineResult {
     pub pipeline_layout: wgpu::PipelineLayout,
 }
 
-pub trait HasDefinition: MaterialTrait {
+pub trait MaterialHasDefinition: MaterialTrait {
     type Def: MaterialDefinitionTrait<Self>;
 }
 
@@ -61,7 +61,7 @@ pub trait MaterialDefinitionTrait<M: MaterialTrait> {
         layout: &wgpu::BindGroupLayout,
     ) -> M
     where
-        M: HasDefinition;
+        M: MaterialHasDefinition;
     fn create_pipeline(
         render_env: &RenderingEnvironment,
     ) -> Result<MaterialPipelineResult, anyhow::Error>;
@@ -74,7 +74,7 @@ impl<'a> MaterialFactory<'a> {
 
     pub fn create_material<M: MaterialTrait>(&self, desc: M::Descriptor) -> M
     where
-        M: HasDefinition,
+        M: MaterialHasDefinition,
     {
         let pipeline_resources = &self.render_env.pipeline_resources;
 
@@ -83,14 +83,18 @@ impl<'a> MaterialFactory<'a> {
             .get(&M::TYPE)
             .expect("Layout not found for material type {M::TYPE}");
 
-        <<M as HasDefinition>::Def>::create_instance(self.render_env, desc, bind_group_layout)
+        <<M as MaterialHasDefinition>::Def>::create_instance(
+            self.render_env,
+            desc,
+            bind_group_layout,
+        )
     }
 
     pub fn create_pipeline<M: MaterialTrait>(self) -> Result<MaterialPipelineResult, anyhow::Error>
     where
-        M: HasDefinition,
+        M: MaterialHasDefinition,
     {
-        <<M as HasDefinition>::Def>::create_pipeline(self.render_env)
+        <<M as MaterialHasDefinition>::Def>::create_pipeline(self.render_env)
     }
 
     pub fn create_default_material(&self) -> Material {

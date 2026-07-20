@@ -39,7 +39,10 @@ pub fn initialize_compute_tasks(render_env: &mut RenderingEnvironment) {
 
     macro_rules! register {
         ($($t:ty),* $(,)?) => {
-            $( crate::renderer::pipeline_system::PipelineSystem::register_compute_pipeline::<$t>(render_env); )*
+            $( crate::renderer::pipeline_system::PipelineSystem::register_compute_pipeline::<$t>(render_env);
+            #[cfg(feature = "shader-hot-reload")]
+            crate::util::shader_watcher::ShaderWatcherSystem::register_compute_pipeline::<$t>(render_env);
+            )*
         };
     }
 
