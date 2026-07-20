@@ -3,6 +3,7 @@ use hybrid_renderer::assets::model::Model;
 use hybrid_renderer::input::camera_controller::{
     OrbitCameraController, OrbitCameraControllerDescriptor,
 };
+use hybrid_renderer::util::shader_watcher::ShaderWatcherSystem;
 use std::sync::Arc;
 use std::time::Instant;
 use winit::event::{Event, WindowEvent};
@@ -174,6 +175,7 @@ pub fn run() {
 
                 let frame_data = stage.make_frame_data();
                 RendererSystem::render(&mut render_env, &frame_data);
+                ShaderWatcherSystem::update(&mut render_env);
             }
             Event::AboutToWait => {
                 window.request_redraw();

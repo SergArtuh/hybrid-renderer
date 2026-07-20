@@ -8,6 +8,8 @@ use crate::core::{
 pub struct PipelineResources {
     pub global: wgpu::BindGroupLayout,
     pub model: wgpu::BindGroupLayout,
+    pub material_to_shader_registry: HashMap<MaterialType, PathBuf>,
+    pub compute_task_to_shader_registry: HashMap<ComputeTaskType, PathBuf>,
     pub materials: HashMap<MaterialType, Arc<wgpu::BindGroupLayout>>,
     pub compute_tasks: HashMap<ComputeTaskType, Arc<wgpu::BindGroupLayout>>,
     pub pipeline_layouts: HashMap<MaterialType, wgpu::PipelineLayout>,
@@ -99,6 +101,8 @@ impl PipelineResources {
         Self {
             global,
             model,
+            material_to_shader_registry: HashMap::new(),
+            compute_task_to_shader_registry: HashMap::new(),
             materials: HashMap::new(),
             compute_tasks: HashMap::new(),
             pipeline_layouts: HashMap::new(),

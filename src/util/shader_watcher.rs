@@ -1,48 +1,77 @@
 use std::{
-    collections::HashSet,
-    path::{Path, PathBuf},
+    collections::{HashMap, HashSet},
+    path::PathBuf,
     time::{Duration, Instant},
 };
 
 use notify::{Event, RecursiveMode, Watcher};
 
-struct ShaderWatcher {
+use crate::{
+    core::material::{MaterialTrait, MaterialType},
+    renderer::{
+        RenderingEnvironment, materials::HasDefinition, pipeline_resources::PipelineResources,
+        pipeline_system::PipelineSystem,
+    },
+};
+
+pub struct ShaderWatcherResources {
     _watcher: notify::RecommendedWatcher,
     receiver: std::sync::mpsc::Receiver<notify::Result<Event>>,
-    //pipelines: Vec<PipelineMaterialDefinition>,
     modified_shaders: HashSet<PathBuf>,
     last_tick: Instant,
+    material_rebuild_functions: HashMap<MaterialType, fn(&mut RenderingEnvironment)>,
 }
 
-impl ShaderWatcher {
-    /*
+impl ShaderWatcherResources {
     const TICK_INTERVAL: Duration = Duration::from_millis(500);
-    fn new(shader_path: &Path) -> anyhow::Result<Self> {
+    pub fn create_and_initialize(pipeline_resources: &PipelineResources) -> Self {
         let (tx, rx) = std::sync::mpsc::channel();
-        let mut watcher = notify::recommended_watcher(tx)?;
-        watcher.watch(shader_path, RecursiveMode::Recursive)?;
+        let mut watcher = notify::recommended_watcher(tx).unwrap();
 
-        Ok(Self {
+        watcher
+            .watch(
+                &pipeline_resources.base_shaders_path,
+                RecursiveMode::Recursive,
+            )
+            .ok();
+
+        Self {
             _watcher: watcher,
             receiver: rx,
-            pipelines: Vec::new(),
             modified_shaders: HashSet::new(),
             last_tick: Instant::now(),
-        })
+            material_rebuild_functions: HashMap::new(),
+        }
+    }
+}
+
+pub struct ShaderWatcherSystem;
+
+impl ShaderWatcherSystem {
+    pub fn register_pipeline<T: MaterialTrait>(render_env: &mut RenderingEnvironment)
+    where
+        T: HasDefinition,
+    {
+        render_env
+            .shader_watcher_resources
+            .as_mut()
+            .unwrap()
+            .material_rebuild_functions
+            .insert(T::TYPE, |env| PipelineSystem::register_pipeline::<T>(env));
     }
 
-    pub fn process_events(&mut self) {
-        if self.last_tick.elapsed() < Self::TICK_INTERVAL {
+    fn process_events(resources: &mut ShaderWatcherResources) {
+        if resources.last_tick.elapsed() < ShaderWatcherResources::TICK_INTERVAL {
             return;
         }
-        self.last_tick = Instant::now();
+        resources.last_tick = Instant::now();
 
-        for res in self.receiver.try_iter() {
+        for res in resources.receiver.try_iter() {
             match res {
                 Ok(event) => {
                     event.paths.iter().for_each(|path| {
                         if event.kind.is_modify() {
-                            self.modified_shaders.insert(path.clone());
+                            resources.modified_shaders.insert(path.clone());
                         }
                     });
                 }
@@ -51,73 +80,43 @@ impl ShaderWatcher {
         }
     }
 
-    pub fn update(&mut self, render_env: &RenderingEnvironment) {
-        {
-            self.process_events();
-            let modified_pipelines = self.get_modified_pipelines_definitions();
+    pub fn update(render_env: &mut RenderingEnvironment) {
+        if let Some(resources) = render_env.shader_watcher_resources.as_mut() {
+            Self::process_events(resources);
+            let mut modified_matterals = Vec::new();
 
-            for pipeline_definition in modified_pipelines {
-                let mut pipeline_visitor_env = PipelineVisitorEnvironment {
-                    pipeline_definition: &pipeline_definition,
-                    context: &render_env.render_context,
-                    layout: &render_env.interface,
-                };
+            {
+                let modified_shaders = Self::get_modified_shaders(
+                    render_env.shader_watcher_resources.as_mut().unwrap(),
+                );
+                let material_to_shader_registry =
+                    &render_env.pipeline_resources.material_to_shader_registry;
 
-                let reloader = self
-                    .reloaders
-                    .get(&pipeline_definition.material_type)
+                for (material_type, shader_path) in material_to_shader_registry {
+                    if modified_shaders.contains(&shader_path) {
+                        modified_matterals.push(*material_type);
+                    }
+                }
+            }
+
+            for material_type in modified_matterals {
+                let rebuild_func = render_env
+                    .shader_watcher_resources
+                    .as_ref()
+                    .unwrap()
+                    .material_rebuild_functions
+                    .get(&material_type)
                     .unwrap();
 
-                let pipeline = reloader(self, &mut pipeline_visitor_env);
-
-                if let Ok(pipeline) = pipeline {
-                    self.render_pipelines
-                        .insert(pipeline_definition.material_type, pipeline);
-                } else {
-                    println!(
-                        "Failed to recompile pipeline for material type {:?}. Keeping old pipeline.",
-                        pipeline_definition.material_type
-                    );
-                }
-
-                let path = if let Ok(relative_path) = pipeline_definition
-                    .shader_path
-                    .strip_prefix(&self.base_shaders_path)
-                {
-                    relative_path
-                } else {
-                    &pipeline_definition.shader_path
-                };
-                println!(
-                    "Shader modified {:?}, pipeline recompiled: {:?}",
-                    path, pipeline_definition.material_type
-                );
+                println!("Reloading material pipeline: {:?} ", material_type);
+                rebuild_func(render_env);
             }
         }
     }
 
-    fn get_modified_pipelines_definitions(&mut self) -> Vec<PipelineMaterialDefinition> {
-        let mut modified_pipelines = Vec::new();
-        let modified_shaders = self.get_modified_shaders();
-        for modified_shader in modified_shaders {
-            for pipeline in self.pipelines.iter() {
-                if pipeline.shader_path == modified_shader {
-                    modified_pipelines.push(pipeline.clone());
-                }
-            }
-        }
-        modified_pipelines
-    }
-
-    fn get_modified_shaders(&mut self) -> Vec<PathBuf> {
-        let modified_shaders = self.modified_shaders.iter().cloned().collect();
-        self.modified_shaders.clear();
+    fn get_modified_shaders(resources: &mut ShaderWatcherResources) -> Vec<PathBuf> {
+        let modified_shaders = resources.modified_shaders.iter().cloned().collect();
+        resources.modified_shaders.clear();
         modified_shaders
     }
-
-    // fn add_pipeline(&mut self, pipeline_definition: PipelineMaterialDefinition) {
-    //     self.pipelines.push(pipeline_definition);
-    // }
-
-    */
 }

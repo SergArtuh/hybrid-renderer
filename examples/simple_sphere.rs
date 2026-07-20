@@ -1,6 +1,7 @@
 use hybrid_renderer::assets::model::Model;
 use hybrid_renderer::core::model_node::ModelNode;
 use hybrid_renderer::renderer::materials::MaterialFactory;
+use hybrid_renderer::util::shader_watcher::ShaderWatcherSystem;
 use std::sync::Arc;
 use std::time::Instant;
 use winit::event::{Event, WindowEvent};
@@ -129,6 +130,7 @@ pub fn run() {
                 stage.main_camera.position.z = camera_z;
                 let frame_data = stage.make_frame_data();
                 RendererSystem::render(&mut render_env, &frame_data);
+                ShaderWatcherSystem::update(&mut render_env);
             }
             Event::AboutToWait => {
                 window.request_redraw();
