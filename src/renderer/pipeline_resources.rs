@@ -1,7 +1,9 @@
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use crate::core::{
-    compute_task::ComputeTaskType, material::MaterialType, render_context::RenderContext,
+    compute_task::ComputeTaskType,
+    material::{MaterialType, PipelineKey},
+    render_context::RenderContext,
     uniforms::ModelUniform,
 };
 
@@ -14,7 +16,7 @@ pub struct PipelineResources {
     pub compute_tasks: HashMap<ComputeTaskType, Arc<wgpu::BindGroupLayout>>,
     pub pipeline_layouts: HashMap<MaterialType, wgpu::PipelineLayout>,
     pub compute_pipeline_layouts: HashMap<ComputeTaskType, wgpu::PipelineLayout>,
-    pub render_pipelines: HashMap<MaterialType, wgpu::RenderPipeline>,
+    pub render_pipelines: HashMap<(MaterialType, PipelineKey), wgpu::RenderPipeline>,
     pub compute_pipelines: HashMap<ComputeTaskType, wgpu::ComputePipeline>,
     pub base_shaders_path: PathBuf,
     pub base_compute_shaders_path: PathBuf,

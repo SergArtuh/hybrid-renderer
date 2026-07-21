@@ -36,6 +36,25 @@ impl Material {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PipelineKey {
+    pub alpha_mode: AlphaMode,
+}
+
+impl Default for PipelineKey {
+    fn default() -> Self {
+        Self {
+            alpha_mode: AlphaMode::Opaque,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AlphaMode {
+    Opaque,
+    Blend,
+}
+
 pub trait MaterialTrait: Sized {
     type Descriptor;
     type Definition;
@@ -51,6 +70,10 @@ pub trait MaterialTrait: Sized {
             material_type: Self::TYPE,
             layout: Self::LAYOUT,
         }
+    }
+
+    fn supported_keys() -> Vec<PipelineKey> {
+        vec![PipelineKey::default()]
     }
 }
 

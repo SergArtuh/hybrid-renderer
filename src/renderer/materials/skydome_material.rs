@@ -6,7 +6,8 @@ use wgpu::util::DeviceExt;
 use crate::{
     core::{
         material::{
-            EnvironmentMap, MaterialDomain, MaterialTrait, MaterialType, SkydomeEnvironmentMaterial,
+            EnvironmentMap, MaterialDomain, MaterialTrait, MaterialType, PipelineKey,
+            SkydomeEnvironmentMaterial,
         },
         texture::Texture,
         uniforms::SkydomeUniform,
@@ -192,7 +193,7 @@ impl MaterialDefinitionTrait<SkydomeEnvironmentMaterial> for Definition {
 
         Ok(MaterialPipelineResult {
             bind_group_layout: Arc::new(bind_group_layout),
-            render_pipeline: pipeline,
+            render_pipelines: vec![(PipelineKey::default(), pipeline)],
             pipeline_layout,
         })
     }

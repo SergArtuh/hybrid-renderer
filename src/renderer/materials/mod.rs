@@ -14,6 +14,7 @@ pub use skydome_material::Descriptor as SkydomeMaterialDescriptor;
 pub use sprite_material::Definition as SpriteMaterialDefinition;
 pub use sprite_material::Descriptor as SpriteMaterialDescriptor;
 
+use crate::core::material::PipelineKey;
 use crate::core::material::SkydomeEnvironmentMaterial;
 use crate::core::material::SpriteMaterial;
 use crate::core::material::{Material, MaterialTrait, PhysicalMaterial};
@@ -46,7 +47,7 @@ pub struct MaterialFactory<'a> {
 
 pub struct MaterialPipelineResult {
     pub bind_group_layout: Arc<wgpu::BindGroupLayout>,
-    pub render_pipeline: wgpu::RenderPipeline,
+    pub render_pipelines: Vec<(PipelineKey, wgpu::RenderPipeline)>,
     pub pipeline_layout: wgpu::PipelineLayout,
 }
 

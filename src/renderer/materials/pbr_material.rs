@@ -5,7 +5,9 @@ use wgpu::util::DeviceExt;
 
 use crate::{
     core::{
-        material::{MaterialDomain, MaterialTrait, MaterialType, PhysicalMaterial},
+        material::{
+            AlphaMode, MaterialDomain, MaterialTrait, MaterialType, PhysicalMaterial, PipelineKey,
+        },
         texture::Texture,
         uniforms::PbrMaterialUniforms,
         vertex::Vertex,
@@ -47,6 +49,16 @@ impl MaterialTrait for PhysicalMaterial {
 
     fn get_shader_path() -> &'static str {
         "pbr_material.wgsl"
+    }
+    fn supported_keys() -> Vec<PipelineKey> {
+        vec![
+            PipelineKey {
+                alpha_mode: AlphaMode::Opaque,
+            },
+            PipelineKey {
+                alpha_mode: AlphaMode::Blend,
+            },
+        ]
     }
 }
 
@@ -357,9 +369,9 @@ impl MaterialDefinitionTrait<PhysicalMaterial> for Definition {
                     source: wgpu::ShaderSource::Wgsl(source.into()),
                 });
 
-        let pipeline = render_env.render_context.device.create_render_pipeline(
+        let pipeline_opaque = render_env.render_context.device.create_render_pipeline(
             &wgpu::RenderPipelineDescriptor {
-                label: Some("Render Pipeline"),
+                label: Some("Opaque Pbr Material Pipeline"),
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &shader_module,
@@ -393,9 +405,60 @@ impl MaterialDefinitionTrait<PhysicalMaterial> for Definition {
             },
         );
 
+        let pipeline_transparent = render_env.render_context.device.create_render_pipeline(
+            &wgpu::RenderPipelineDescriptor {
+                label: Some("Transparent Pbr Material Pipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader_module,
+                    entry_point: "vs_main",
+                    buffers: pipeline_definition.layout,
+                    compilation_options: Default::default(),
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEFAULT_DEPTH_FORMAT,
+                    depth_write_enabled: true,
+                    depth_compare: wgpu::CompareFunction::Less,
+                    stencil: wgpu::StencilState::default(),
+                    bias: wgpu::DepthBiasState::default(),
+                }),
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader_module,
+                    entry_point: "fs_main",
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: render_env.render_context.config.format,
+                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: Default::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    ..Default::default()
+                },
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+            },
+        );
+
         Ok(MaterialPipelineResult {
             bind_group_layout: Arc::new(bind_group_layout),
-            render_pipeline: pipeline,
+            render_pipelines: vec![
+                (
+                    PipelineKey {
+                        alpha_mode: AlphaMode::Opaque,
+                        ..Default::default()
+                    },
+                    pipeline_opaque,
+                ),
+                (
+                    PipelineKey {
+                        alpha_mode: AlphaMode::Blend,
+                        ..Default::default()
+                    },
+                    pipeline_transparent,
+                ),
+            ],
             pipeline_layout,
         })
     }

@@ -6,7 +6,8 @@ use wgpu::util::DeviceExt;
 use crate::{
     core::{
         material::{
-            MaterialDomain, MaterialTrait, MaterialType, SpriteMaterial, SpriteSheetUniform,
+            MaterialDomain, MaterialTrait, MaterialType, PipelineKey, SpriteMaterial,
+            SpriteSheetUniform,
         },
         texture::Texture,
         vertex::Vertex,
@@ -218,7 +219,7 @@ impl MaterialDefinitionTrait<SpriteMaterial> for Definition {
 
         Ok(MaterialPipelineResult {
             bind_group_layout: Arc::new(bind_group_layout),
-            render_pipeline: pipeline,
+            render_pipelines: vec![(PipelineKey::default(), pipeline)],
             pipeline_layout,
         })
     }

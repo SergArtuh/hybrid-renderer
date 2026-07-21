@@ -5,7 +5,7 @@ use anyhow::Context;
 use crate::{
     core::{
         compute_task::{ComputeTaskTrait, ComputeTaskType},
-        material::{Material, MaterialTrait},
+        material::{Material, MaterialTrait, PipelineKey},
     },
     renderer::{
         RenderingEnvironment,
@@ -26,10 +26,12 @@ impl PipelineSystem {
         let result = MaterialFactory::new(render_env).create_pipeline::<T>();
 
         if let Ok(result) = result {
-            render_env
-                .pipeline_resources
-                .render_pipelines
-                .insert(material_type, result.render_pipeline);
+            for (key, pipeline) in result.render_pipelines {
+                render_env
+                    .pipeline_resources
+                    .render_pipelines
+                    .insert((material_type, key), pipeline);
+            }
 
             render_env
                 .pipeline_resources
@@ -125,15 +127,22 @@ impl PipelineSystem {
             .insert(task_type, shader_path);
     }
 
+    pub fn get_default_pipeline<'a>(
+        render_env: &'a RenderingEnvironment,
+        material: &Material,
+    ) -> Option<&'a wgpu::RenderPipeline> {
+        Self::get_pipeline(render_env, material, PipelineKey::default())
+    }
+
     pub fn get_pipeline<'a>(
         render_env: &'a RenderingEnvironment,
         material: &Material,
-    ) -> &'a wgpu::RenderPipeline {
+        key: PipelineKey,
+    ) -> Option<&'a wgpu::RenderPipeline> {
         render_env
             .pipeline_resources
             .render_pipelines
-            .get(&material.kind())
-            .expect("Pipeline not registered for material type")
+            .get(&(material.kind(), key))
     }
 
     pub fn get_compute_pipeline<'a>(
