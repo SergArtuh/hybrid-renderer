@@ -5,7 +5,7 @@ use std::{cell::Cell, sync::Arc};
 use wgpu::util::DeviceExt;
 
 use crate::core::{
-    material::{PhysicalMaterial, SpriteMaterial, SpriteSheetUniform},
+    material::{AlphaMode, PhysicalMaterial, SpriteMaterial, SpriteSheetUniform},
     render_context::RenderContext,
     texture::{DefaultTextures, Texture},
 };
@@ -16,6 +16,7 @@ pub struct PhysicalMaterialBuilder {
     metallic_roughness: Option<Arc<Texture>>,
     occlusion: Option<Arc<Texture>>,
     emissive: Option<Arc<Texture>>,
+    alpha_mode: AlphaMode,
 }
 
 impl PhysicalMaterialBuilder {
@@ -26,6 +27,7 @@ impl PhysicalMaterialBuilder {
             metallic_roughness: None,
             occlusion: None,
             emissive: None,
+            alpha_mode: AlphaMode::Opaque,
         }
     }
 
@@ -51,6 +53,11 @@ impl PhysicalMaterialBuilder {
 
     pub fn with_emissive(mut self, emissive: Arc<Texture>) -> Self {
         self.emissive = Some(emissive);
+        self
+    }
+
+    pub fn with_alpha_mode(mut self, alpha_mode: AlphaMode) -> Self {
+        self.alpha_mode = alpha_mode;
         self
     }
 
@@ -126,6 +133,7 @@ impl PhysicalMaterialBuilder {
             occlusion,
             emissive,
             bind_group,
+            alpha_mode: self.alpha_mode,
         }
     }
 }

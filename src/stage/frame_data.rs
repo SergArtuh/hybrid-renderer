@@ -4,6 +4,7 @@ use crate::core::mesh::Mesh;
 use crate::core::uniforms::CameraUniform;
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub enum RenderItem {
     StaticMesh {
         mesh: Arc<Mesh>,
@@ -22,7 +23,10 @@ impl RenderItem {
 
 pub struct FrameData {
     pub camera_uniform: CameraUniform,
-    pub render_items: Vec<RenderItem>,
+    pub render_items_opaque: Vec<RenderItem>,
+    pub render_items_opaque_offset: usize,
+    pub render_items_transparent: Vec<RenderItem>,
+    pub render_items_transparent_offset: usize,
     pub skydome: Option<Skydome>,
 }
 

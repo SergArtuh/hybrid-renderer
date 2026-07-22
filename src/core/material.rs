@@ -34,6 +34,13 @@ impl Material {
             Material::Skydome(skydome_material) => &skydome_material.bind_group,
         }
     }
+    pub fn alpha_mode(&self) -> AlphaMode {
+        match self {
+            Material::Sprite(_) => AlphaMode::Opaque,
+            Material::Physical(physical_material) => physical_material.alpha_mode,
+            Material::Skydome(_) => AlphaMode::Opaque,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -52,6 +59,7 @@ impl Default for PipelineKey {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AlphaMode {
     Opaque,
+    Mask, // Not supportet yet
     Blend,
 }
 
@@ -111,6 +119,7 @@ impl SpriteMaterial {
     }
 }
 pub struct PhysicalMaterial {
+    pub alpha_mode: AlphaMode,
     pub base_color: Arc<wgpu::TextureView>,
     pub normal: Arc<wgpu::TextureView>,
     pub metallic_roughness: Arc<wgpu::TextureView>,

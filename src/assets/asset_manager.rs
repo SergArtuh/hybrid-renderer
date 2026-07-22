@@ -1,8 +1,10 @@
+use gltf::material::AlphaMode as GltfAlphaMode;
+
 use crate::assets::skydome::Skydome;
 use crate::assets::util::gltf_extended_decorator::{
     ClearcoatFactor, ClearcoatRoughnessFactor, ExtendedMaterialDecorator,
 };
-use crate::core::material::{Material, PhysicalMaterial, SkydomeEnvironmentMaterial};
+use crate::core::material::{AlphaMode, Material, PhysicalMaterial, SkydomeEnvironmentMaterial};
 use crate::core::mesh::{Mesh, MeshData};
 use crate::core::model_node::ModelNode;
 use crate::core::texture::Texture;
@@ -166,6 +168,11 @@ impl<'a> AssetManager<'a> {
             let gltf_material_base = primitive.material();
             let gltf_material = ExtendedMaterialDecorator::new(gltf_material_base, &document);
             let pbr = gltf_material.pbr_metallic_roughness();
+            let alpha_mode = match gltf_material.alpha_mode() {
+                GltfAlphaMode::Opaque => AlphaMode::Opaque,
+                GltfAlphaMode::Mask => AlphaMode::Mask,
+                GltfAlphaMode::Blend => AlphaMode::Blend,
+            };
 
             let mut desc = PhysicalMaterialDescriptor {
                 base_color: None,
@@ -184,6 +191,7 @@ impl<'a> AssetManager<'a> {
                 clearcoat_texture: None,
                 clearcoat_roughness_texture: None,
                 clearcoat_normal_texture: None,
+                alpha_mode,
             };
 
             if let Some(texture_info) = pbr.base_color_texture() {

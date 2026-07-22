@@ -38,6 +38,7 @@ pub struct Descriptor {
     pub clearcoat_texture: Option<Arc<Texture>>,
     pub clearcoat_roughness_texture: Option<Arc<Texture>>,
     pub clearcoat_normal_texture: Option<Arc<Texture>>,
+    pub alpha_mode: AlphaMode,
 }
 
 impl MaterialTrait for PhysicalMaterial {
@@ -199,6 +200,7 @@ impl MaterialDefinitionTrait<PhysicalMaterial> for Definition {
                 });
 
         PhysicalMaterial {
+            alpha_mode: desc.alpha_mode,
             base_color,
             normal,
             metallic_roughness,
