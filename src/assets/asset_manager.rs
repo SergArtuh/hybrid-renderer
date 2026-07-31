@@ -17,6 +17,7 @@ use crate::renderer::compute_task::{
 use crate::renderer::materials::PhysicalMaterialDescriptor;
 use crate::renderer::materials::{MaterialFactory, SkydomeMaterialDescriptor};
 use crate::util::geometry_generator::MeshUtil;
+use std::cell::Cell;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -134,6 +135,7 @@ impl<'a> AssetManager<'a> {
         material_factory: &MaterialFactory,
     ) -> anyhow::Result<Arc<ModelNode>> {
         let local_matrix = glam::Mat4::from_cols_array_2d(&node.transform().matrix());
+        let node_name = node.name().unwrap_or("unnamed").to_string();
 
         let (mesh, material) = if let Some(gltf_mesh) = node.mesh() {
             let primitive = gltf_mesh.primitives().next().unwrap();
@@ -264,6 +266,8 @@ impl<'a> AssetManager<'a> {
         }
 
         Ok(Arc::new(ModelNode {
+            is_visible: Cell::new(true),
+            name: node_name,
             local_transform: local_matrix,
             children,
             mesh,

@@ -69,6 +69,10 @@ impl Stage {
         render_items: &mut Vec<RenderItem>,
         parent_world_matrix: glam::Mat4,
     ) {
+        if !node.is_visible.get() {
+            return;
+        }
+
         let current_world_matrix = parent_world_matrix * node.local_transform;
 
         if let (Some(mesh), Some(material)) = (&node.mesh, &node.material) {

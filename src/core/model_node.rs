@@ -1,9 +1,12 @@
+use std::cell::Cell;
 use std::sync::Arc;
 
 use crate::core::material::Material;
 use crate::core::mesh::Mesh;
 
 pub struct ModelNode {
+    pub is_visible: std::cell::Cell<bool>,
+    pub name: String,
     pub local_transform: glam::Mat4,
     pub children: Vec<Arc<ModelNode>>,
     pub mesh: Option<Arc<Mesh>>,
@@ -17,6 +20,8 @@ impl ModelNode {
             children: Vec::new(),
             mesh: Some(Arc::new(mesh)),
             material: Some(Arc::new(material)),
+            name: "unnamed".to_string(),
+            is_visible: Cell::new(true),
         }
     }
 
