@@ -4,6 +4,7 @@ use hybrid_renderer::input::camera_controller::{
     OrbitCameraController, OrbitCameraControllerDescriptor,
 };
 use hybrid_renderer::util::shader_watcher::ShaderWatcherSystem;
+
 use std::sync::Arc;
 use std::time::Instant;
 use winit::event::{Event, WindowEvent};
@@ -16,10 +17,10 @@ use hybrid_renderer::core::render_context::RenderContext;
 use hybrid_renderer::renderer::{RendererSystem, RenderingEnvironment};
 use hybrid_renderer::stage::Stage;
 
-//const CAMERA_DISTANCE: f32 = 250.0;
 const CAMERA_DISTANCE: f32 = 5.0;
 
 pub fn run() {
+    unsafe { std::env::set_var("RUST_BACKTRACE", "1") };
     let event_loop = EventLoop::new().unwrap();
     let window = Arc::new(
         WindowBuilder::new()
@@ -29,7 +30,8 @@ pub fn run() {
     );
 
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
+        //backends: wgpu::Backends::all(),
+        backends: wgpu::Backends::VULKAN,
         ..Default::default()
     });
 
@@ -105,11 +107,13 @@ pub fn run() {
 
     let render_context = RenderContext::new(device, queue, surface, config);
     let mut render_env = RenderingEnvironment::create_and_initialize(render_context);
+    //let mut renderer = RendererSystem::new(&render_env);
 
     let asset_manager = AssetManager::new(&render_env);
+
     let models = asset_manager
+        .load_gltf_models("assets/models/porsche.glb")
         //.load_gltf_models("assets/models/MetalRoughSpheres.glb")
-        .load_gltf_models("assets/models/ClearCoatTest.glb")
         //.load_gltf_models("assets/models/NormalTangentTest.glb")
         //.load_gltf_models("assets/models/NormalTangentMirrorTest.glb")
         .unwrap();
@@ -118,13 +122,17 @@ pub fn run() {
         let mut model = Model::new(Arc::clone(model_node), glam::Mat4::IDENTITY);
         model.transform = glam::Mat4::from_translation(glam::Vec3::new(0.0, 0.6, 0.0));
 
+        // Remove the fake shadows in the floor
+        if let Some(node) = model.find_node_by_name("Plane") {
+            node.is_visible.set(false);
+        }
+
         stage.add_model(model);
     }
     let skydome = asset_manager
-        //.load_skydome("assets/modern_buildings_night_1k.exr")
-        //.load_skydome("assets/modern_buildings_night_8k.exr", 150.0, 0.95)
-        //.load_skydome("assets/zwartkops_curve_sunset_4k.exr", 150.0, 0.95)
-        .load_skydome("assets/cannon_1k.hdr", 150.0, 0.95)
+        //.load_skybox("assets/modern_buildings_night_1k.exr")
+        //.load_skybox("assets/modern_buildings_night_8k.exr")
+        .load_skydome("assets/zwartkops_curve_sunset_4k.exr", 100.0, 0.95)
         .unwrap();
     stage.set_skydome(skydome);
 
@@ -172,7 +180,6 @@ pub fn run() {
                 last_time = now;
 
                 camera_controller.update_camera(&mut stage.main_camera, delta_time);
-
                 let frame_data = stage.make_frame_data();
                 RendererSystem::render(&mut render_env, &frame_data);
                 ShaderWatcherSystem::update(&mut render_env);
