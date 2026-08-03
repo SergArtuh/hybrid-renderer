@@ -1,9 +1,11 @@
-pub mod camera;
+pub mod compute_task;
 pub mod material;
+pub mod material_builder;
 pub mod math;
 pub mod mesh;
-pub mod model;
+pub mod model_node;
 pub mod render_context;
 pub mod texture;
 pub mod texture_builder;
+pub mod uniforms;
 pub mod vertex;

@@ -3,6 +3,10 @@ name = "hybrid-renderer"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["shader-hot-reload"]
+shader-hot-reload = ["dep:notify"]
+
 [dependencies]
 winit = "0.29"
 wgpu = "0.20"
@@ -12,8 +16,29 @@ log = "0.4"
 bytemuck = { version = "1.16", features = ["derive"] }
 image = "0.25.9"
 glam = { version = "0.32.0", features = ["bytemuck", "mint"] }
+notify = { version = "8.2.0", optional = true }
+anyhow = "1.0.102"
+gltf = { version = "1.4.1", features = ["extensions", "names"] }
+half = { version = "2.7.1", features = ["bytemuck"] }
+serde_json = "1.0.150"
 
 [lib]
 name = "hybrid_renderer"
 path = "src/lib.rs"
 crate-type = ["rlib"]
+
+[[example]]
+name = "model_viewer"
+path = "examples/model_viewer.rs"
+
+[[example]]
+name = "env_map"
+path = "examples/dev/env_map.rs"
+
+[[example]]
+name = "simple_sphere"
+path = "examples/dev/simple_sphere.rs"
+
+[[example]]
+name = "sprite_animation"
+path = "examples/dev/sprite_animation.rs"

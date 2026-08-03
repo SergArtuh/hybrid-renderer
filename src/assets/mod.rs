@@ -1,2 +1,5 @@
+pub mod asset_manager;
 pub mod camera;
-pub mod model_instance;
+pub mod model;
+pub mod skydome;
+pub mod util;

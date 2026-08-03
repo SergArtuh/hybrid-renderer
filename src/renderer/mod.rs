@@ -1,160 +1,61 @@
 use crate::{
-    core::{material::PhysicalMaterial, render_context::RenderContext, vertex::Vertex},
+    core::render_context::RenderContext,
     renderer::{
-        camera_manager::CameraManager, frame_target::FrameTarget,
-        layout_interface::LayoutInterface, pipeline_manager::PipelineManager,
+        compute_task::initialize_compute_tasks, materials::initialize_materials,
+        pipeline_resources::PipelineResources, render_resources::RenderResources,
     },
-    stage::frame_data::FrameData,
+    util::shader_watcher::ShaderWatcherResources,
 };
 
-pub mod camera_manager;
+pub mod compute_task;
 pub mod frame_target;
-pub mod layout_interface;
+pub mod materials;
 pub mod passes;
-pub mod pipeline_manager;
+pub mod pipeline_resources;
+pub mod pipeline_system;
+pub mod render_resources;
+pub mod render_system;
 
-use passes::forward::ForwardPass;
+pub use render_system::RendererSystem;
 
-pub struct Renderer {
-    forward_pass: ForwardPass,
-    camera_manager: CameraManager,
-    pipeline_manager: PipelineManager,
-    //layout_interface: LayoutInterface,
-    depth_texture_view: wgpu::TextureView,
+pub struct RenderingEnvironment<'a> {
+    pub render_context: RenderContext<'a>,
+    pub pipeline_resources: PipelineResources,
+    pub render_resources: RenderResources,
+    pub shader_watcher_resources: Option<ShaderWatcherResources>,
 }
 
-impl Renderer {
-    pub fn new(render_context: &RenderContext) -> Self {
-        let layout_interface = LayoutInterface::new(render_context);
-        let camera_manager = CameraManager::new(render_context, &layout_interface.global);
-        // let pipeline_layout = layout_interface.create_pipeline_layout(render_context);
-        let depth_texture_view = Self::create_depth_texture(render_context);
+impl<'a> RenderingEnvironment<'a> {
+    fn new(render_context: RenderContext<'a>) -> Self {
+        let pipeline_resources = PipelineResources::new(&render_context);
+        let render_resources = RenderResources::new(&render_context, &pipeline_resources);
 
-        let mut pipeline_manager = PipelineManager::new();
-        pipeline_manager.register_pipeline::<PhysicalMaterial>(
-            render_context,
-            &layout_interface,
-            "pbr_material.wgsl",
-            &[Vertex::desc()],
-        );
-
-        let forward_pass = ForwardPass::default();
-
+        let shader_watcher_resources = if cfg!(feature = "shader-hot-reload") {
+            Some(ShaderWatcherResources::create_and_initialize(
+                &pipeline_resources,
+            ))
+        } else {
+            None
+        };
         Self {
-            forward_pass,
-            camera_manager,
-            pipeline_manager,
-            //layout_interface,
-            depth_texture_view,
+            render_context,
+            pipeline_resources,
+            render_resources,
+            shader_watcher_resources,
         }
     }
+    pub fn create_and_initialize(render_context: RenderContext<'a>) -> Self {
+        let mut env = Self::new(render_context);
+        initialize_materials(&mut env);
+        initialize_compute_tasks(&mut env);
+        env
+    }
 
-    pub fn render(&self, render_context: &RenderContext, frame_data: &FrameData) {
-        let mut frame_target = self.begin_frame(render_context);
-
-        self.camera_manager
-            .update_buffer(render_context, &frame_data.camera_uniform);
-
-        {
-            let mut render_pass =
-                self.create_render_pass(&mut frame_target.encoder, &frame_target.view);
-
-            self.forward_pass.execute(
-                &mut render_pass,
-                &self.pipeline_manager,
-                &self.camera_manager,
-                frame_data,
-            );
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if width == 0 || height == 0 {
+            return;
         }
-
-        self.end_frame(render_context, frame_target);
-    }
-
-    fn begin_frame(&self, render_context: &RenderContext) -> FrameTarget {
-        let surface_texture = match render_context.surface.get_current_texture() {
-            Ok(output) => output,
-            Err(e) => {
-                eprintln!("Failed to get current texture: {:?}", e);
-                panic!("Failed to get current texture");
-            }
-        };
-
-        let view = surface_texture
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-
-        let encoder =
-            render_context
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Render Encoder"),
-                });
-
-        FrameTarget {
-            surface_texture,
-            view,
-            encoder,
-        }
-    }
-
-    fn end_frame(&self, render_context: &RenderContext, target: FrameTarget) {
-        render_context
-            .queue
-            .submit(std::iter::once(target.encoder.finish()));
-        target.surface_texture.present();
-    }
-
-    fn create_depth_texture(render_context: &RenderContext) -> wgpu::TextureView {
-        let size = wgpu::Extent3d {
-            width: render_context.config.width,
-            height: render_context.config.height,
-            depth_or_array_layers: 1,
-        };
-        let desc = wgpu::TextureDescriptor {
-            label: Some("Depth Texture"),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: PipelineManager::DEPTH_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        };
-        let texture = render_context.device.create_texture(&desc);
-        texture.create_view(&wgpu::TextureViewDescriptor::default())
-    }
-
-    fn create_render_pass<'a>(
-        self: &'a Self,
-        encoder: &'a mut wgpu::CommandEncoder,
-        view: &'a wgpu::TextureView,
-    ) -> wgpu::RenderPass<'a> {
-        let render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Render Pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.1,
-                        g: 0.2,
-                        b: 0.3,
-                        a: 1.0,
-                    }),
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &self.depth_texture_view,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
-                    store: wgpu::StoreOp::Store,
-                }),
-                stencil_ops: None,
-            }),
-            occlusion_query_set: None,
-            timestamp_writes: None,
-        });
-        render_pass
+        self.render_context.resize(width, height);
+        self.render_resources.resize(&self.render_context);
     }
 }
