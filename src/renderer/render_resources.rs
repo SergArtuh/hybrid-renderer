@@ -76,6 +76,10 @@ impl RenderResources {
         }
     }
 
+    pub fn resize(&mut self, render_context: &RenderContext) {
+        self.depth_texture_view = Self::create_depth_texture(render_context);
+    }
+
     fn create_depth_texture(render_context: &RenderContext) -> wgpu::TextureView {
         let size = wgpu::Extent3d {
             width: render_context.config.width,

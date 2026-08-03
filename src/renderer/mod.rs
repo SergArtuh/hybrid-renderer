@@ -50,4 +50,12 @@ impl<'a> RenderingEnvironment<'a> {
         initialize_compute_tasks(&mut env);
         env
     }
+
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if width == 0 || height == 0 {
+            return;
+        }
+        self.render_context.resize(width, height);
+        self.render_resources.resize(&self.render_context);
+    }
 }

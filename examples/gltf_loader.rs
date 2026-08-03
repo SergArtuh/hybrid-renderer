@@ -171,6 +171,15 @@ pub fn run() {
                 window_id,
             } if window_id == window.id() => elwt.exit(),
             Event::WindowEvent {
+                event: WindowEvent::Resized(new_size),
+                window_id,
+            } if window_id == window.id() => {
+                render_env.resize(new_size.width, new_size.height);
+                if new_size.height > 0 {
+                    stage.main_camera.aspect = new_size.width as f32 / new_size.height as f32;
+                }
+            }
+            Event::WindowEvent {
                 event: WindowEvent::RedrawRequested,
                 window_id,
             } if window_id == window.id() => {

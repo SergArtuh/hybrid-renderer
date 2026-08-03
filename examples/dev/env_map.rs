@@ -232,7 +232,7 @@ pub fn run() {
         usage: wgpu::BufferUsages::INDEX,
     });
 
-    let render_context = RenderContext::new(device, queue, surface, config);
+    let mut render_context = RenderContext::new(device, queue, surface, config);
 
     //let mut file = File::open("assets/modern_buildings_night_1k.exr").expect("Файл не найден!");
     let mut file = File::open("assets/flame.jpg").expect("Файл не найден!");
@@ -375,6 +375,12 @@ pub fn run() {
                 event: WindowEvent::CloseRequested,
                 window_id,
             } if window_id == window.id() => elwt.exit(),
+            Event::WindowEvent {
+                event: WindowEvent::Resized(new_size),
+                window_id,
+            } if window_id == window.id() => {
+                render_context.resize(new_size.width, new_size.height);
+            }
             Event::WindowEvent {
                 event: WindowEvent::RedrawRequested,
                 window_id,
