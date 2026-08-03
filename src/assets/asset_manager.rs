@@ -1,8 +1,10 @@
+use gltf::material::AlphaMode as GltfAlphaMode;
+
 use crate::assets::skydome::Skydome;
 use crate::assets::util::gltf_extended_decorator::{
     ClearcoatFactor, ClearcoatRoughnessFactor, ExtendedMaterialDecorator,
 };
-use crate::core::material::{Material, PhysicalMaterial, SkydomeEnvironmentMaterial};
+use crate::core::material::{AlphaMode, Material, PhysicalMaterial, SkydomeEnvironmentMaterial};
 use crate::core::mesh::{Mesh, MeshData};
 use crate::core::model_node::ModelNode;
 use crate::core::texture::Texture;
@@ -15,6 +17,7 @@ use crate::renderer::compute_task::{
 use crate::renderer::materials::PhysicalMaterialDescriptor;
 use crate::renderer::materials::{MaterialFactory, SkydomeMaterialDescriptor};
 use crate::util::geometry_generator::MeshUtil;
+use std::cell::Cell;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -132,6 +135,7 @@ impl<'a> AssetManager<'a> {
         material_factory: &MaterialFactory,
     ) -> anyhow::Result<Arc<ModelNode>> {
         let local_matrix = glam::Mat4::from_cols_array_2d(&node.transform().matrix());
+        let node_name = node.name().unwrap_or("unnamed").to_string();
 
         let (mesh, material) = if let Some(gltf_mesh) = node.mesh() {
             let primitive = gltf_mesh.primitives().next().unwrap();
@@ -166,6 +170,11 @@ impl<'a> AssetManager<'a> {
             let gltf_material_base = primitive.material();
             let gltf_material = ExtendedMaterialDecorator::new(gltf_material_base, &document);
             let pbr = gltf_material.pbr_metallic_roughness();
+            let alpha_mode = match gltf_material.alpha_mode() {
+                GltfAlphaMode::Opaque => AlphaMode::Opaque,
+                GltfAlphaMode::Mask => AlphaMode::Mask,
+                GltfAlphaMode::Blend => AlphaMode::Blend,
+            };
 
             let mut desc = PhysicalMaterialDescriptor {
                 base_color: None,
@@ -184,6 +193,7 @@ impl<'a> AssetManager<'a> {
                 clearcoat_texture: None,
                 clearcoat_roughness_texture: None,
                 clearcoat_normal_texture: None,
+                alpha_mode,
             };
 
             if let Some(texture_info) = pbr.base_color_texture() {
@@ -256,6 +266,8 @@ impl<'a> AssetManager<'a> {
         }
 
         Ok(Arc::new(ModelNode {
+            is_visible: Cell::new(true),
+            name: node_name,
             local_transform: local_matrix,
             children,
             mesh,

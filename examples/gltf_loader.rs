@@ -121,6 +121,11 @@ pub fn run() {
         let mut model = Model::new(Arc::clone(model_node), glam::Mat4::IDENTITY);
         model.transform = glam::Mat4::from_translation(glam::Vec3::new(0.0, 0.6, 0.0));
 
+        // Remove the fake shadows in the floor
+        if let Some(node) = model.find_node_by_name("Plane") {
+            node.is_visible.set(false);
+        }
+
         stage.add_model(model);
     }
     let skydome = asset_manager

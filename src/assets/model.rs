@@ -15,4 +15,22 @@ impl Model {
             transform,
         }
     }
+
+    pub fn find_node_by_name(&self, name: &str) -> Option<Arc<ModelNode>> {
+        Self::find_node_by_name_recursive(name, &self.root_node)
+    }
+
+    fn find_node_by_name_recursive(name: &str, node: &Arc<ModelNode>) -> Option<Arc<ModelNode>> {
+        if node.name == name {
+            return Some(Arc::clone(&node));
+        }
+
+        for child in &node.children {
+            if let Some(node) = Self::find_node_by_name_recursive(name, child) {
+                return Some(node);
+            }
+        }
+
+        None
+    }
 }

@@ -284,11 +284,20 @@ impl ModelResources {
         }
     }
 
-    pub fn update_buffer(&self, render_context: &RenderContext, items: &[RenderItem]) {
+    pub fn update_buffer(
+        &self,
+        render_context: &RenderContext,
+        items: &[RenderItem],
+        start_index: usize,
+    ) {
+        if items.is_empty() {
+            return;
+        }
+
         let mut data = Vec::with_capacity(items.len() * self.stride as usize);
 
         for item in items {
-            let model_uniform = Self::make_model_uniform(item.world_matrix().clone());
+            let model_uniform = Self::make_model_uniform(*item.world_matrix());
             let bytes = bytemuck::bytes_of(&model_uniform);
             data.extend_from_slice(bytes);
 
@@ -298,7 +307,12 @@ impl ModelResources {
             }
         }
 
-        render_context.queue.write_buffer(&self.buffer, 0, &data);
+        // Вычисляем байтовое смещение в GPU-буфере
+        let buffer_offset = (start_index as u64) * (self.stride as u64);
+
+        render_context
+            .queue
+            .write_buffer(&self.buffer, buffer_offset, &data);
     }
 
     fn calculate_stride(render_context: &RenderContext) -> wgpu::BufferAddress {

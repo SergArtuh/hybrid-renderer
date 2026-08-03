@@ -118,6 +118,7 @@ fn processed_specular(R: vec3<f32>, uv: vec2<f32>) -> vec3<f32> {
 @fragment
 fn fs_main(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @location(0) vec4<f32> {
     let base_color = textureSample(t_base_color, common_sampler, in.uv).rgb * material_data.base_color_factor.rgb;
+    let alpha = textureSample(t_base_color, common_sampler, in.uv).a * material_data.base_color_factor.a;
     let orm = textureSample(t_metallic_roughness, common_sampler, in.uv);
     let emissive_color = textureSample(t_emissive, common_sampler, in.uv).rgb;
     
@@ -165,5 +166,5 @@ fn fs_main(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @location
 
     
     let gamma_corrected = pow(color, vec3(INV_GAMMA));
-    return vec4<f32>(color, 1.0);
+    return vec4<f32>(color, alpha);
 }

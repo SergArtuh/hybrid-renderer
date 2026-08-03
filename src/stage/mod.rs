@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::{
     assets::{camera::Camera, model::Model, skydome::Skydome},
+    core::material::AlphaMode,
     core::model_node::ModelNode,
     stage::frame_data::{FrameData, RenderItem},
 };
@@ -38,9 +39,27 @@ impl Stage {
             Self::flatten_node(&model.root_node, &mut model_render_items, model.transform);
             render_items.extend(model_render_items);
         }
+
+        let mut opaque_render_items = Vec::new();
+        let mut blend_render_items = Vec::new();
+        for render_item in &render_items {
+            let alpha_mode = match &render_item {
+                RenderItem::StaticMesh { material, .. } => material.alpha_mode(),
+            };
+            match alpha_mode {
+                AlphaMode::Opaque => opaque_render_items.push(render_item.clone()),
+                AlphaMode::Blend | AlphaMode::Mask => blend_render_items.push(render_item.clone()),
+            }
+        }
+        let render_items_opaque_offset = 0;
+        let render_items_transparent_offset = opaque_render_items.len();
+
         FrameData {
             camera_uniform: self.main_camera.get_uniform(),
-            render_items,
+            render_items_opaque: opaque_render_items,
+            render_items_opaque_offset,
+            render_items_transparent: blend_render_items,
+            render_items_transparent_offset,
             skydome: self.skydome.clone(),
         }
     }
@@ -50,6 +69,10 @@ impl Stage {
         render_items: &mut Vec<RenderItem>,
         parent_world_matrix: glam::Mat4,
     ) {
+        if !node.is_visible.get() {
+            return;
+        }
+
         let current_world_matrix = parent_world_matrix * node.local_transform;
 
         if let (Some(mesh), Some(material)) = (&node.mesh, &node.material) {

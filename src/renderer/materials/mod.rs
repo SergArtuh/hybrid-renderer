@@ -14,6 +14,7 @@ pub use skydome_material::Descriptor as SkydomeMaterialDescriptor;
 pub use sprite_material::Definition as SpriteMaterialDefinition;
 pub use sprite_material::Descriptor as SpriteMaterialDescriptor;
 
+use crate::core::material::AlphaMode;
 use crate::core::material::PipelineKey;
 use crate::core::material::SkydomeEnvironmentMaterial;
 use crate::core::material::SpriteMaterial;
@@ -117,6 +118,7 @@ impl<'a> MaterialFactory<'a> {
                 clearcoat_texture: None,
                 clearcoat_roughness_texture: None,
                 clearcoat_normal_texture: None,
+                alpha_mode: AlphaMode::Opaque,
             }),
         )
     }

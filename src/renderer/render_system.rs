@@ -79,7 +79,20 @@ impl<'a> RendererSystem {
         rendering_environment
             .render_resources
             .model_resources
-            .update_buffer(render_context, &frame_data.render_items);
+            .update_buffer(
+                render_context,
+                &frame_data.render_items_transparent,
+                frame_data.render_items_transparent_offset,
+            );
+
+        rendering_environment
+            .render_resources
+            .model_resources
+            .update_buffer(
+                render_context,
+                &frame_data.render_items_opaque,
+                frame_data.render_items_opaque_offset,
+            );
 
         FrameTarget {
             surface_texture,
