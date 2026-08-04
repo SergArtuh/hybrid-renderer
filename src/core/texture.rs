@@ -42,6 +42,7 @@ impl DefaultTextures {
 
         let cubemap = TextureBuilder::new(device, queue)
             .with_label("cubemap_fallback")
+            .from_image(create_color_img(128, 128, 128, 255))
             .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
             .with_size(1, 1)
             .as_cubemap()

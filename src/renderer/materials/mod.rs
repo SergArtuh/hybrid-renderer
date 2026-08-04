@@ -107,7 +107,7 @@ impl<'a> MaterialFactory<'a> {
                 metallic_roughness: None,
                 occlusion: None,
                 emissive: None,
-                base_color_factor: [0.0; 4],
+                base_color_factor: [1.0; 4],
                 emissive_factor: [0.0; 3],
                 normal_scale: 1.0,
                 roughness_factor: 1.0,
