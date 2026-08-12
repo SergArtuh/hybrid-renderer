@@ -31,7 +31,7 @@ impl MaterialTrait for SpriteMaterial {
     type Definition = Definition;
     const DOMAIN: MaterialDomain = MaterialDomain::Surface;
     const TYPE: MaterialType = MaterialType::Sprite;
-    const LAYOUT: &'static [wgpu::VertexBufferLayout<'static>] = &[Vertex::LAYOUT];
+    const LAYOUT: &'static [Option<wgpu::VertexBufferLayout<'static>>] = &[Some(Vertex::LAYOUT)];
 
     fn get_shader_path() -> &'static str {
         "sprite_material.wgsl"
@@ -104,7 +104,7 @@ impl MaterialDefinitionTrait<SpriteMaterial> for Definition {
     ) -> Result<MaterialPipelineResult, anyhow::Error> {
         let render_context = &render_env.render_context;
         let pipeline_definition = SpriteMaterial::get_definition(); //environment.pipeline_definition;
-        render_context
+        let _ = render_context
             .device
             .push_error_scope(wgpu::ErrorFilter::Validation);
         let shader_file_path = &pipeline_definition.shader_path;
@@ -116,8 +116,7 @@ impl MaterialDefinitionTrait<SpriteMaterial> for Definition {
             .join("surface");
 
         let shader_path = base_shaders_path.clone().join(shader_file_path);
-        let source = std::fs::read_to_string(&shader_path)
-            .with_context(|| format!("Failed to read shader file at {:?}", &shader_path))?;
+        let source = crate::renderer::shaders::load_shader_source(&shader_path)?;
 
         let label = shader_path
             .to_str()
@@ -164,11 +163,11 @@ impl MaterialDefinitionTrait<SpriteMaterial> for Definition {
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: None,
                     bind_group_layouts: &[
-                        &render_env.pipeline_resources.global,
-                        &render_env.pipeline_resources.model,
-                        &bind_group_layout,
+                        Some(&render_env.pipeline_resources.global),
+                        Some(&render_env.pipeline_resources.model),
+                        Some(&bind_group_layout),
                     ],
-                    push_constant_ranges: &[],
+                    immediate_size: 0,
                 });
 
         let shader_module =
@@ -187,13 +186,13 @@ impl MaterialDefinitionTrait<SpriteMaterial> for Definition {
                     layout: Some(&pipeline_layout),
                     vertex: wgpu::VertexState {
                         module: &shader_module,
-                        entry_point: "vs_main",
+                        entry_point: Some("vs_main"),
                         buffers: &[],
                         compilation_options: Default::default(),
                     },
                     fragment: Some(wgpu::FragmentState {
                         module: &shader_module,
-                        entry_point: "fs_main",
+                        entry_point: Some("fs_main"),
                         targets: &[Some(wgpu::ColorTargetState {
                             format: render_context.config.format,
                             blend: Some(wgpu::BlendState::REPLACE),
@@ -208,13 +207,14 @@ impl MaterialDefinitionTrait<SpriteMaterial> for Definition {
                     //depth_stencil: None,
                     depth_stencil: Some(wgpu::DepthStencilState {
                         format: DEFAULT_DEPTH_FORMAT,
-                        depth_write_enabled: true,
-                        depth_compare: wgpu::CompareFunction::Less,
+                        depth_write_enabled: Some(true),
+                        depth_compare: Some(wgpu::CompareFunction::Less),
                         stencil: wgpu::StencilState::default(),
                         bias: wgpu::DepthBiasState::default(),
                     }),
                     multisample: wgpu::MultisampleState::default(),
-                    multiview: None,
+                    multiview_mask: None,
+                    cache: None,
                 });
 
         Ok(MaterialPipelineResult {

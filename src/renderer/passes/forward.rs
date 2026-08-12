@@ -35,7 +35,7 @@ impl ForwardPass {
                     &render_env.render_resources.model_resources.bind_group,
                     &[0u32],
                 );
-                rpass.set_bind_group(2, &skydome.material.bind_group(), &[]);
+                rpass.set_bind_group(2, skydome.material.bind_group(), &[]);
 
                 match (&skydome.mesh.vertex_buffer, &skydome.mesh.index_buffer) {
                     (Some(vertex_buffer), Some(index_buffer)) => {
@@ -98,7 +98,7 @@ impl ForwardPass {
                                     &render_env.render_resources.model_resources.bind_group,
                                     &[offset],
                                 );
-                                rpass.set_bind_group(2, &material.bind_group(), &[]);
+                                rpass.set_bind_group(2, material.bind_group(), &[]);
 
                                 rpass.draw_indexed(0..mesh.index_count, 0, 0..1);
                             }
@@ -118,7 +118,7 @@ impl ForwardPass {
                                     &render_env.render_resources.model_resources.bind_group,
                                     &[0u32],
                                 );
-                                rpass.set_bind_group(2, &material.bind_group(), &[]);
+                                rpass.set_bind_group(2, material.bind_group(), &[]);
 
                                 rpass.draw(0..mesh.index_count, 0..1);
                             }

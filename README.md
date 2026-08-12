@@ -37,9 +37,14 @@ A real-time 3D rendering engine written in Rust on top of [wgpu](https://github.
    python scripts/fetch_assets.py
    ```
    This is a no-op if `./assets` already exists and is non-empty.
-3. Run an example:
+3. (Desktop) Run an example:
    ```bash
    cargo run --example model_viewer
+   ```
+   (Web) Run an example:
+   ```bash
+   python scripts/build.py
+   python scripts/serve.py
    ```
 
 ## Asset management

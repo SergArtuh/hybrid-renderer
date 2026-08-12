@@ -1,3 +1,5 @@
 /target
 /assets
+/third_party
 .vscode
+/web/pkg/

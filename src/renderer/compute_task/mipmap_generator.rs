@@ -218,13 +218,13 @@ impl<'a> Provider<'a> {
                 });
 
             copy_encoder.copy_texture_to_texture(
-                wgpu::ImageCopyTexture {
+                wgpu::TexelCopyTextureInfo {
                     texture: &temp_mip_out.texture,
                     mip_level: 0,
                     origin: wgpu::Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::All,
                 },
-                wgpu::ImageCopyTexture {
+                wgpu::TexelCopyTextureInfo {
                     texture: &result_texture.texture,
                     mip_level: target_mip,
                     origin: wgpu::Origin3d::ZERO,
@@ -244,10 +244,10 @@ impl<'a> Provider<'a> {
             current_src = temp_mip_out;
         }
 
-        self.render_env
+        let _ = self.render_env
             .render_context
             .device
-            .poll(wgpu::Maintain::Wait);
+            .poll(wgpu::PollType::wait_indefinitely());
         Ok(result_texture)
     }
 }

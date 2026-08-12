@@ -31,7 +31,7 @@ pub fn initialize_materials(render_env: &mut RenderingEnvironment) {
     macro_rules! register {
         ($($t:ty),* $(,)?) => {
             $( crate::renderer::pipeline_system::PipelineSystem::register_pipeline::<$t>(render_env);
-            #[cfg(feature = "shader-hot-reload")]
+            #[cfg(all(feature = "shader-hot-reload", not(target_arch = "wasm32")))]
             crate::util::shader_watcher::ShaderWatcherSystem::register_pipeline::<$t>(render_env);
          )*
         };

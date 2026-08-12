@@ -40,7 +40,7 @@ pub fn initialize_compute_tasks(render_env: &mut RenderingEnvironment) {
     macro_rules! register {
         ($($t:ty),* $(,)?) => {
             $( crate::renderer::pipeline_system::PipelineSystem::register_compute_pipeline::<$t>(render_env);
-            #[cfg(feature = "shader-hot-reload")]
+            #[cfg(all(feature = "shader-hot-reload", not(target_arch = "wasm32")))]
             crate::util::shader_watcher::ShaderWatcherSystem::register_compute_pipeline::<$t>(render_env);
             )*
         };
@@ -145,10 +145,11 @@ impl<'a> ComputeExecutor<'a> {
     }
 
     pub fn wait(&self) {
-        self.render_env
+        let _ = self
+            .render_env
             .render_context
             .device
-            .poll(wgpu::Maintain::Wait);
+            .poll(wgpu::PollType::wait_indefinitely());
     }
 
     pub fn get_encoder_mut(&mut self) -> Option<&mut wgpu::CommandEncoder> {

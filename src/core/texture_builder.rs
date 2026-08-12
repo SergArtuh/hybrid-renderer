@@ -89,7 +89,7 @@ pub struct TextureBuilder<'a> {
     format: TextureFormatDescriptor,
     mag_filter: wgpu::FilterMode,
     min_filter: wgpu::FilterMode,
-    mipmap_filter: wgpu::FilterMode,
+    mipmap_filter: wgpu::MipmapFilterMode,
     address_mode: wgpu::AddressMode,
     source: TextureSource<'a>,
     size: Option<(u32, u32)>,
@@ -111,7 +111,7 @@ impl<'a> TextureBuilder<'a> {
             },
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             address_mode: wgpu::AddressMode::ClampToEdge,
             source: TextureSource::Empty,
             size: None,
@@ -152,7 +152,7 @@ impl<'a> TextureBuilder<'a> {
         self
     }
 
-    pub fn with_mipmap_filter(mut self, filter: wgpu::FilterMode) -> Self {
+    pub fn with_mipmap_filter(mut self, filter: wgpu::MipmapFilterMode) -> Self {
         self.mipmap_filter = filter;
         self
     }
@@ -235,14 +235,14 @@ impl<'a> TextureBuilder<'a> {
         };
 
         self.queue.write_texture(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
             rgba_data,
-            wgpu::ImageDataLayout {
+            wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(channels * width),
                 rows_per_image: Some(height),
@@ -382,7 +382,11 @@ impl<'a> TextureBuilder<'a> {
                     (w, h, RawTextureData::F16(f16_data))
                 } else {
                     let data = rgba.into_raw();
-                    let data = if layers > 1 { data.repeat(layers) } else { data };
+                    let data = if layers > 1 {
+                        data.repeat(layers)
+                    } else {
+                        data
+                    };
                     (w, h, RawTextureData::F32(data))
                 }
             }
@@ -390,21 +394,33 @@ impl<'a> TextureBuilder<'a> {
                 let rgba = img.to_rgba8();
                 let (w, h) = rgba.dimensions();
                 let data = rgba.into_raw();
-                let data = if layers > 1 { data.repeat(layers) } else { data };
+                let data = if layers > 1 {
+                    data.repeat(layers)
+                } else {
+                    data
+                };
                 (w, h, RawTextureData::U8(data))
             }
             image::ColorType::La8 => {
                 let luma = img.to_luma_alpha8();
                 let (w, h) = luma.dimensions();
                 let data = luma.into_raw();
-                let data = if layers > 1 { data.repeat(layers) } else { data };
+                let data = if layers > 1 {
+                    data.repeat(layers)
+                } else {
+                    data
+                };
                 (w, h, RawTextureData::U8(data))
             }
             image::ColorType::L8 => {
                 let luma = img.to_luma8();
                 let (w, h) = luma.dimensions();
                 let data = luma.into_raw();
-                let data = if layers > 1 { data.repeat(layers) } else { data };
+                let data = if layers > 1 {
+                    data.repeat(layers)
+                } else {
+                    data
+                };
                 (w, h, RawTextureData::U8(data))
             }
             _ => panic!("Unsupported color type: {:?}", color_type),
@@ -429,12 +445,20 @@ impl<'a> TextureBuilder<'a> {
                         rgba.extend_from_slice(rgb);
                         rgba.push(255);
                     }
-                    let rgba = if layers > 1 { rgba.repeat(layers) } else { rgba };
+                    let rgba = if layers > 1 {
+                        rgba.repeat(layers)
+                    } else {
+                        rgba
+                    };
                     (width, height, RawTextureData::U8(rgba))
                 }
                 _ => {
                     let data = pixels.to_vec();
-                    let data = if layers > 1 { data.repeat(layers) } else { data };
+                    let data = if layers > 1 {
+                        data.repeat(layers)
+                    } else {
+                        data
+                    };
                     (width, height, RawTextureData::U8(data))
                 }
             }
@@ -448,13 +472,21 @@ impl<'a> TextureBuilder<'a> {
                         rgba.extend_from_slice(rgb);
                         rgba.push(f16::from_f32(1.0));
                     }
-                    let rgba = if layers > 1 { rgba.repeat(layers) } else { rgba };
+                    let rgba = if layers > 1 {
+                        rgba.repeat(layers)
+                    } else {
+                        rgba
+                    };
                     (width, height, RawTextureData::F16(rgba))
                 }
                 _ => {
                     let f16_pixels = bytemuck::cast_slice::<u8, f16>(pixels);
                     let data = f16_pixels.to_vec();
-                    let data = if layers > 1 { data.repeat(layers) } else { data };
+                    let data = if layers > 1 {
+                        data.repeat(layers)
+                    } else {
+                        data
+                    };
                     (width, height, RawTextureData::F16(data))
                 }
             }
