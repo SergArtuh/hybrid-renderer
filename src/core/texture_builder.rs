@@ -70,16 +70,76 @@ impl IntoWgpuFormat for wgpu::TextureFormat {
             wgpu::TextureFormat::R16Float => ComponentPrecision::F16,
             _ => panic!("Unsupported format to linear: {:?}", self),
         };
-        let is_srgb = match self {
-            wgpu::TextureFormat::Rgba8UnormSrgb => true,
-            _ => false,
-        };
+        let is_srgb = matches!(self, wgpu::TextureFormat::Rgba8UnormSrgb);
         TextureFormatDescriptor {
             channels,
             precision,
             is_srgb,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum TextureFilterMode {
+    #[default]
+    Linear,
+    Nearest,
+}
+
+impl TextureFilterMode {
+    #[allow(dead_code)]
+    fn to_wgpu_filter_mode(self) -> wgpu::FilterMode {
+        match self {
+            TextureFilterMode::Linear => wgpu::FilterMode::Linear,
+            TextureFilterMode::Nearest => wgpu::FilterMode::Nearest,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum TextureAddressMode {
+    #[default]
+    ClampToEdge,
+    Repeat,
+    MirrorRepeat,
+}
+
+impl TextureAddressMode {
+    #[allow(dead_code)]
+    fn to_wgpu_address_mode(self) -> wgpu::AddressMode {
+        match self {
+            TextureAddressMode::ClampToEdge => wgpu::AddressMode::ClampToEdge,
+            TextureAddressMode::Repeat => wgpu::AddressMode::Repeat,
+            TextureAddressMode::MirrorRepeat => wgpu::AddressMode::MirrorRepeat,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum TextureMipmapFilterMode {
+    #[default]
+    Nearest,
+    Linear,
+}
+
+impl TextureMipmapFilterMode {
+    #[allow(dead_code)]
+    fn to_wgpu_filter_mode(self) -> wgpu::FilterMode {
+        match self {
+            TextureMipmapFilterMode::Nearest => wgpu::FilterMode::Nearest,
+            TextureMipmapFilterMode::Linear => wgpu::FilterMode::Linear,
+        }
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct TextureDescriptor {
+    pub mag_filter: TextureFilterMode,
+    pub min_filter: TextureFilterMode,
+    pub mipmap_filter: TextureMipmapFilterMode,
+    pub address_mode: TextureAddressMode,
+    pub mip_level_count: u32,
+    pub is_cubemap: bool,
 }
 
 pub struct TextureBuilder<'a> {
@@ -229,9 +289,9 @@ impl<'a> TextureBuilder<'a> {
         let channels = channel_count * byte_per_chanel;
 
         let rgba_data = match &rgba {
-            RawTextureData::U8(data) => bytemuck::cast_slice(&data),
-            RawTextureData::F16(data) => bytemuck::cast_slice(&data),
-            RawTextureData::F32(data) => bytemuck::cast_slice(&data),
+            RawTextureData::U8(data) => bytemuck::cast_slice(data),
+            RawTextureData::F16(data) => bytemuck::cast_slice(data),
+            RawTextureData::F32(data) => bytemuck::cast_slice(data),
         };
 
         self.queue.write_texture(
@@ -440,7 +500,7 @@ impl<'a> TextureBuilder<'a> {
         {
             match self.format.channels {
                 TextureChannels::RGB => {
-                    let mut rgba = Vec::with_capacity((pixels.len() / 3 * 4) * layers as usize);
+                    let mut rgba = Vec::with_capacity((pixels.len() / 3 * 4) * layers);
                     for rgb in pixels.chunks_exact(3) {
                         rgba.extend_from_slice(rgb);
                         rgba.push(255);
@@ -465,7 +525,7 @@ impl<'a> TextureBuilder<'a> {
         } else if self.format.precision == ComponentPrecision::F16 {
             match self.format.channels {
                 TextureChannels::RGB => {
-                    let mut rgba = Vec::with_capacity((pixels.len() / 3 * 4) * layers as usize);
+                    let mut rgba = Vec::with_capacity((pixels.len() / 3 * 4) * layers);
                     // Assuming raw f16 bytes are passed (2 bytes per channel)
                     let f16_pixels = bytemuck::cast_slice::<u8, f16>(pixels);
                     for rgb in f16_pixels.chunks_exact(3) {

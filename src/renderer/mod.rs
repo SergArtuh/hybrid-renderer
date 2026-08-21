@@ -1,6 +1,7 @@
 #[cfg(all(feature = "shader-hot-reload", not(target_arch = "wasm32")))]
 use crate::util::shader_watcher::ShaderWatcherResources;
 use crate::{
+    assets::assets_resources::AssetResource,
     core::render_context::RenderContext,
     renderer::{
         compute_task::initialize_compute_tasks, materials::initialize_materials,
@@ -24,6 +25,7 @@ pub struct RenderingEnvironment<'a> {
     pub render_context: RenderContext<'a>,
     pub pipeline_resources: PipelineResources,
     pub render_resources: RenderResources,
+    pub asset_resources: AssetResource,
     #[cfg(all(feature = "shader-hot-reload", not(target_arch = "wasm32")))]
     pub shader_watcher_resources: Option<ShaderWatcherResources>,
 }
@@ -32,6 +34,7 @@ impl<'a> RenderingEnvironment<'a> {
     fn new(render_context: RenderContext<'a>) -> Self {
         let pipeline_resources = PipelineResources::new(&render_context);
         let render_resources = RenderResources::new(&render_context, &pipeline_resources);
+        let asset_resources = AssetResource::new();
 
         #[cfg(all(feature = "shader-hot-reload", not(target_arch = "wasm32")))]
         let shader_watcher_resources = Some(ShaderWatcherResources::create_and_initialize(
@@ -42,6 +45,7 @@ impl<'a> RenderingEnvironment<'a> {
             render_context,
             pipeline_resources,
             render_resources,
+            asset_resources,
             #[cfg(all(feature = "shader-hot-reload", not(target_arch = "wasm32")))]
             shader_watcher_resources,
         }

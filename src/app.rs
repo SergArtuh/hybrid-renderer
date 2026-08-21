@@ -1,3 +1,6 @@
+#![allow(clippy::style, clippy::type_complexity)]
+
+use crate::assets::asset_manager::AssetManager;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::util::shader_watcher::ShaderWatcherSystem;
 use std::sync::Arc;
@@ -39,7 +42,6 @@ macro_rules! main_app {
     };
 }
 
-const CAMERA_DISTANCE: f32 = 5.0;
 pub struct AppContext<'a> {
     pub window: Arc<Window>,
     pub render_env: RenderingEnvironment<'a>,
@@ -47,7 +49,8 @@ pub struct AppContext<'a> {
 
 pub trait Application: 'static + Sized {
     fn init(ctx: &mut AppContext<'_>) -> (Self, Stage);
-    fn update(&mut self, _ctx: &mut AppContext<'_>, _delta_time: f32) {}
+    fn load_assets(&mut self, _asset_manager: &mut AssetManager<'_>) {}
+    fn update(&mut self, _ctx: &mut AppContext<'_>, _stage: &mut Stage, _delta_time: f32) {}
 }
 
 pub struct App {}
@@ -102,7 +105,8 @@ impl App {
             backends: wgpu::Backends::BROWSER_WEBGPU,
             #[cfg(not(target_arch = "wasm32"))]
             backends: wgpu::Backends::all(),
-            flags: wgpu::InstanceFlags::default(),
+            //flags: wgpu::InstanceFlags::default(),
+            flags: wgpu::InstanceFlags::advanced_debugging(),
             memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
             backend_options: wgpu::BackendOptions::default(),
             display: None,
@@ -138,22 +142,6 @@ impl App {
             .find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
 
-        // #[cfg(not(target_arch = "wasm32"))]
-        // let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        //     label: Some("My Primary Device"),
-
-        //     required_features: wgpu::Features::POLYGON_MODE_LINE,
-
-        //     required_limits: wgpu::Limits {
-        //         max_bind_groups: 4,
-        //         ..wgpu::Limits::default()
-        //     },
-        //     experimental_features: ExperimentalFeatures::default(),
-        //     memory_hints: wgpu::MemoryHints::default(),
-        //     trace: wgpu::Trace::Off,
-        // }))
-        // .unwrap();
-
         #[cfg(target_arch = "wasm32")]
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
@@ -188,14 +176,6 @@ impl App {
 
         let size = window.inner_size();
 
-        // let surface_format = surface_caps
-        //     .formats
-        //     .iter()
-        //     .copied()
-        //     .filter(|f| f.is_srgb())
-        //     .next()
-        //     .unwrap_or(surface_caps.formats[0]);
-
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
@@ -221,14 +201,14 @@ impl App {
         #[allow(unused_mut)]
         let (mut app, mut stage) = T::init(&mut app_ctx);
 
+        let mut asset_manager = AssetManager::new(&app_ctx.render_env);
+        app.load_assets(&mut asset_manager);
+
         #[cfg(target_arch = "wasm32")]
-        let mut last_time = web_time::Instant::now();
+        let last_time = web_time::Instant::now();
 
         #[cfg(not(target_arch = "wasm32"))]
-        let mut last_time = std::time::Instant::now();
-
-        let mut frame_time = 0.0f32;
-        //let mut frame_count: u64 = 0;
+        let last_time = std::time::Instant::now();
 
         #[cfg(target_arch = "wasm32")]
         event_loop.spawn(move |event, _elwt| match event {
@@ -253,14 +233,8 @@ impl App {
                 let now = web_time::Instant::now();
 
                 let delta_time = now.duration_since(last_time);
-                last_time = now;
-                frame_time += delta_time.as_secs_f32();
-
-                let camera_x = f32::sin(frame_time) * CAMERA_DISTANCE;
-                let camera_z = f32::cos(frame_time) * CAMERA_DISTANCE;
-
-                stage.main_camera.position.x = camera_x;
-                stage.main_camera.position.z = camera_z;
+                AssetManager::update(&mut app_ctx.render_env, &mut stage);
+                app.update(&mut app_ctx, &mut stage, delta_time.as_secs_f32());
 
                 let frame_data = stage.make_frame_data();
                 RendererSystem::render(&mut app_ctx.render_env, &frame_data);
@@ -293,16 +267,9 @@ impl App {
                 } if window_id == window.id() => {
                     let now = Instant::now();
                     let delta_time = now.duration_since(last_time);
-                    last_time = now;
-                    frame_time += delta_time.as_secs_f32();
+                    AssetManager::update(&mut app_ctx.render_env, &mut stage);
+                    app.update(&mut app_ctx, &mut stage, delta_time.as_secs_f32());
 
-                    let camera_x = f32::sin(frame_time) * CAMERA_DISTANCE;
-                    let camera_z = f32::cos(frame_time) * CAMERA_DISTANCE;
-
-                    app.update(&mut app_ctx, delta_time.as_secs_f32());
-
-                    stage.main_camera.position.x = camera_x;
-                    stage.main_camera.position.z = camera_z;
                     let frame_data = stage.make_frame_data();
                     RendererSystem::render(&mut app_ctx.render_env, &frame_data);
                     ShaderWatcherSystem::update(&mut app_ctx.render_env);

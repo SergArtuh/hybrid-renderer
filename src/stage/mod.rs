@@ -11,7 +11,7 @@ use crate::{
 
 pub struct Stage {
     pub main_camera: Camera,
-    models: Vec<Model>,
+    pub models: Vec<Model>,
     skydome: Option<Skydome>,
 }
 

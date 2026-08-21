@@ -21,12 +21,14 @@ bytemuck = { version = "1.16", features = ["derive"] }
 image = "0.25.9"
 glam = { version = "0.32.0", features = ["bytemuck", "mint"] }
 anyhow = "1.0.102"
+reqwest = { version = "0.12", default-features = false, features = ["default-tls"] }
 gltf = { version = "1.4.1", features = ["extensions", "names"] }
 half = { version = "2.7.1", features = ["bytemuck"] }
 serde_json = "1.0.150"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 env_logger = "0.11"
+ureq = "2.9"
 notify = { version = "8.2.0" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -48,7 +50,7 @@ path = "examples/model_viewer.rs"
 
 [[example]]
 name = "env_map"
-path = "examples/env_map.rs"
+path = "examples/dev/env_map.rs"
 
 [[example]]
 name = "simple_sphere"
