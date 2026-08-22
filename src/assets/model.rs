@@ -2,6 +2,11 @@ use std::sync::Arc;
 
 use crate::core::model_node::ModelNode;
 
+pub struct ModelAsset {
+    pub name: String,
+    pub scene_roots: Vec<Arc<ModelNode>>,
+}
+
 #[derive(Clone)]
 pub struct Model {
     pub root_node: Arc<ModelNode>,

@@ -1,7 +1,10 @@
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::{
-    assets::skydome::{Skydome, SkydomeDescriptor},
+    assets::{
+        model::ModelAsset,
+        skydome::{Skydome, SkydomeDescriptor},
+    },
     core::{texture::Texture, texture_builder::TextureDescriptor},
     renderer::RenderingEnvironment,
     stage::Stage,
@@ -19,10 +22,16 @@ pub struct SkydomeAssetData {
     pub descriptor: SkydomeDescriptor,
 }
 
+#[derive(Clone)]
+pub struct ModelAssetData {
+    pub bytes: Vec<u8>,
+}
+
 pub enum AssetData {
     Bytes(Vec<u8>),
     Texture(TextureAssetData),
     Skydome(SkydomeAssetData),
+    Model(ModelAssetData),
 }
 
 pub type AssetTextureCallback =
@@ -31,12 +40,16 @@ pub type AssetTextureCallback =
 pub type AssetSkydomeCallback =
     Box<dyn FnOnce(&mut RenderingEnvironment, &mut Stage, Skydome) + Send + 'static>;
 
+pub type AssetModelCallback =
+    Box<dyn FnOnce(&mut RenderingEnvironment, &mut Stage, ModelAsset) + Send + 'static>;
+
 pub type AssetBytesCallback =
     Box<dyn FnOnce(&mut RenderingEnvironment, &mut Stage, Vec<u8>) + Send + 'static>;
 
 pub enum AssetCallback {
     Texture(AssetTextureCallback),
     Skydome(AssetSkydomeCallback),
+    Model(AssetModelCallback),
     Bytes(AssetBytesCallback),
 }
 
