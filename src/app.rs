@@ -10,6 +10,7 @@ use std::time::Instant;
 use wgpu::{ExperimentalFeatures, SurfaceColorSpace};
 use winit::event::{Event, WindowEvent};
 
+use crate::input::camera_controller::CameraControllerSystem;
 use winit::event_loop::EventLoop;
 use winit::window::{Window, WindowBuilder};
 
@@ -205,13 +206,48 @@ impl App {
         app.load_assets(&mut asset_manager);
 
         #[cfg(target_arch = "wasm32")]
-        let last_time = web_time::Instant::now();
+        let mut last_time = web_time::Instant::now();
 
         #[cfg(not(target_arch = "wasm32"))]
-        let last_time = std::time::Instant::now();
+        let mut last_time = std::time::Instant::now();
 
         #[cfg(target_arch = "wasm32")]
         event_loop.spawn(move |event, _elwt| match event {
+            // winit::event::Event::WindowEvent {
+            //     event:
+            //         WindowEvent::KeyboardInput {
+            //             event: key_event, ..
+            //         },
+            //     ..
+            // } => {
+            //     if let Some(ref mut controller) = stage.camera_controller {
+            //         CameraControllerSystem::process_keyboard(controller, &key_event);
+            //     }
+            // }
+            // winit::event::Event::WindowEvent {
+            //     event: WindowEvent::MouseInput { button, state, .. },
+            //     ..
+            // } => {
+            //     if let Some(ref mut controller) = stage.camera_controller {
+            //         CameraControllerSystem::process_mouse_button(controller, button, state);
+            //     }
+            // }
+            // winit::event::Event::DeviceEvent {
+            //     event: winit::event::DeviceEvent::MouseMotion { delta },
+            //     ..
+            // } => {
+            //     if let Some(ref mut controller) = stage.camera_controller {
+            //         CameraControllerSystem::process_mouse(controller, delta.0, delta.1);
+            //     }
+            // }
+            // winit::event::Event::WindowEvent {
+            //     event: WindowEvent::MouseWheel { delta, .. },
+            //     ..
+            // } => {
+            //     if let Some(ref mut controller) = stage.camera_controller {
+            //         CameraControllerSystem::process_scroll(controller, &delta);
+            //     }
+            // }
             Event::WindowEvent {
                 event: WindowEvent::Resized(new_size),
                 window_id,
@@ -226,16 +262,19 @@ impl App {
                 event: WindowEvent::RedrawRequested,
                 window_id,
             } if window_id == window.id() => {
-                #[cfg(not(target_arch = "wasm32"))]
-                let now = Instant::now();
-
-                #[cfg(target_arch = "wasm32")]
                 let now = web_time::Instant::now();
-
                 let delta_time = now.duration_since(last_time);
+                last_time = now;
+                let delta_time = now.duration_since(last_time);
+                if let Some(ref mut controller) = stage.camera_controller {
+                    CameraControllerSystem::update_camera(
+                        controller,
+                        &mut stage.main_camera,
+                        delta_time,
+                    )
+                }
                 AssetManager::update(&mut app_ctx.render_env, &mut stage);
                 app.update(&mut app_ctx, &mut stage, delta_time.as_secs_f32());
-
                 let frame_data = stage.make_frame_data();
                 RendererSystem::render(&mut app_ctx.render_env, &frame_data);
             }
@@ -248,6 +287,41 @@ impl App {
         #[cfg(not(target_arch = "wasm32"))]
         event_loop
             .run(move |event, elwt| match event {
+                winit::event::Event::WindowEvent {
+                    event:
+                        WindowEvent::KeyboardInput {
+                            event: key_event, ..
+                        },
+                    ..
+                } => {
+                    if let Some(ref mut controller) = stage.camera_controller {
+                        CameraControllerSystem::process_keyboard(controller, &key_event);
+                    }
+                }
+                winit::event::Event::WindowEvent {
+                    event: WindowEvent::MouseInput { button, state, .. },
+                    ..
+                } => {
+                    if let Some(ref mut controller) = stage.camera_controller {
+                        CameraControllerSystem::process_mouse_button(controller, button, state);
+                    }
+                }
+                winit::event::Event::DeviceEvent {
+                    event: winit::event::DeviceEvent::MouseMotion { delta },
+                    ..
+                } => {
+                    if let Some(ref mut controller) = stage.camera_controller {
+                        CameraControllerSystem::process_mouse(controller, delta.0, delta.1);
+                    }
+                }
+                winit::event::Event::WindowEvent {
+                    event: WindowEvent::MouseWheel { delta, .. },
+                    ..
+                } => {
+                    if let Some(ref mut controller) = stage.camera_controller {
+                        CameraControllerSystem::process_scroll(controller, &delta);
+                    }
+                }
                 Event::WindowEvent {
                     event: WindowEvent::CloseRequested,
                     window_id,
@@ -267,9 +341,16 @@ impl App {
                 } if window_id == window.id() => {
                     let now = Instant::now();
                     let delta_time = now.duration_since(last_time);
+                    last_time = now;
                     AssetManager::update(&mut app_ctx.render_env, &mut stage);
+                    if let Some(ref mut controller) = stage.camera_controller {
+                        CameraControllerSystem::update_camera(
+                            controller,
+                            &mut stage.main_camera,
+                            delta_time,
+                        )
+                    }
                     app.update(&mut app_ctx, &mut stage, delta_time.as_secs_f32());
-
                     let frame_data = stage.make_frame_data();
                     RendererSystem::render(&mut app_ctx.render_env, &frame_data);
                     ShaderWatcherSystem::update(&mut app_ctx.render_env);
