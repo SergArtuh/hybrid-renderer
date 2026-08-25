@@ -10,6 +10,7 @@ pub struct OrbitCameraControllerDescriptor {
     pub distance: f32,
     pub sensitivity: f32,
     pub scroll_speed: f32,
+    pub pinch_zoom_speed: f32,
     pub move_speed: f32,
     pub min_distance: f32,
     pub max_distance: f32,
@@ -24,8 +25,9 @@ impl Default for OrbitCameraControllerDescriptor {
         Self {
             target: Vec3::ZERO,
             distance: 10.0,
-            sensitivity: 2.0,
+            sensitivity: 1.0,
             scroll_speed: 5.0,
+            pinch_zoom_speed: 1.0,
             move_speed: 5.0,
             min_distance: 0.1,
             max_distance: 100.0,
@@ -40,6 +42,7 @@ impl Default for OrbitCameraControllerDescriptor {
 pub struct OrbitCameraController {
     pub sensitivity: f32,
     pub scroll_speed: f32,
+    pub pinch_zoom_speed: f32,
     pub min_distance: f32,
     pub max_distance: f32,
     pub min_pitch: f32,
@@ -61,6 +64,7 @@ impl OrbitCameraController {
         Self {
             sensitivity: desc.sensitivity,
             scroll_speed: desc.scroll_speed,
+            pinch_zoom_speed: desc.pinch_zoom_speed,
             min_distance: desc.min_distance,
             max_distance: desc.max_distance,
             min_pitch: desc.min_pitch,
@@ -82,6 +86,7 @@ pub struct FreeCameraController {
     pub sensitivity: f32,
     pub scroll_line_speed: f32,
     pub scroll_pixel_speed: f32,
+    pub pinch_zoom_speed: f32,
     pub fov_zoom_speed: f32,
     pub min_fov: f32,
     pub max_fov: f32,
@@ -108,6 +113,7 @@ pub struct FreeCameraControllerDescriptor {
     pub sensitivity: f32,
     pub scroll_line_speed: f32,
     pub scroll_pixel_speed: f32,
+    pub pinch_zoom_speed: f32,
     pub fov_zoom_speed: f32,
     pub min_fov: f32,
     pub max_fov: f32,
@@ -118,6 +124,7 @@ impl FreeCameraController {
         Self {
             speed: desc.speed,
             sensitivity: desc.sensitivity,
+            pinch_zoom_speed: desc.pinch_zoom_speed,
             scroll_line_speed: desc.scroll_line_speed,
             scroll_pixel_speed: desc.scroll_pixel_speed,
             fov_zoom_speed: desc.fov_zoom_speed,
@@ -175,6 +182,13 @@ impl OrbitCameraControllerSystem {
         };
     }
 
+    pub fn process_pinch(controller: &mut OrbitCameraController, delta: &MouseScrollDelta) {
+        controller.scroll = match delta {
+            MouseScrollDelta::LineDelta(_, scroll) => -scroll * controller.pinch_zoom_speed,
+            MouseScrollDelta::PixelDelta(pos) => -pos.y as f32 * controller.pinch_zoom_speed,
+        };
+    }
+
     // pub fn set_target(controller: &mut OrbitCameraController, target: Vec3) {
     //     controller.target = target;
     // }
@@ -186,8 +200,8 @@ impl OrbitCameraControllerSystem {
     ) {
         let dt = dt.as_secs_f32();
 
-        controller.yaw += controller.rotate_horizontal * controller.sensitivity * 0.005;
-        controller.pitch += controller.rotate_vertical * controller.sensitivity * 0.005;
+        controller.yaw += controller.rotate_horizontal * controller.sensitivity * dt;
+        controller.pitch += controller.rotate_vertical * controller.sensitivity * dt;
 
         controller.rotate_horizontal = 0.0;
         controller.rotate_vertical = 0.0;
@@ -226,6 +240,7 @@ impl Default for FreeCameraControllerDescriptor {
             fov_zoom_speed: 10.0,
             min_fov: 10.0,
             max_fov: 120.0,
+            pinch_zoom_speed: 1.0,
         }
     }
 }
@@ -294,6 +309,13 @@ impl FreeCameraControllerSystem {
         controller.scroll = match delta {
             MouseScrollDelta::LineDelta(_, scroll) => -scroll * controller.scroll_line_speed,
             MouseScrollDelta::PixelDelta(pos) => -pos.y as f32 * controller.scroll_pixel_speed,
+        };
+    }
+
+    pub fn process_pinch(controller: &mut FreeCameraController, delta: &MouseScrollDelta) {
+        controller.scroll = match delta {
+            MouseScrollDelta::LineDelta(_, scroll) => -scroll * controller.pinch_zoom_speed,
+            MouseScrollDelta::PixelDelta(pos) => -pos.y as f32 * controller.pinch_zoom_speed,
         };
     }
 
@@ -389,6 +411,17 @@ impl CameraControllerSystem {
             }
             CameraController::Free(controller) => {
                 FreeCameraControllerSystem::process_scroll(controller, delta)
+            }
+        }
+    }
+
+    pub fn process_pinch(controller: &mut CameraController, delta: &MouseScrollDelta) {
+        match controller {
+            CameraController::Orbit(controller) => {
+                OrbitCameraControllerSystem::process_pinch(controller, delta)
+            }
+            CameraController::Free(controller) => {
+                FreeCameraControllerSystem::process_pinch(controller, delta)
             }
         }
     }

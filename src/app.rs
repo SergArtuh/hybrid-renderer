@@ -3,10 +3,12 @@
 use crate::assets::asset_manager::AssetManager;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::util::shader_watcher::ShaderWatcherSystem;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use wgpu::{ExperimentalFeatures, SurfaceColorSpace};
-use winit::event::{Event, WindowEvent};
+use winit::dpi::PhysicalPosition;
+use winit::event::{ElementState, Event, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent};
 
 use crate::input::camera_controller::CameraControllerSystem;
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget};
@@ -22,10 +24,10 @@ use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use winit::platform::web::EventLoopExtWebSys;
 
-#[cfg(target_arch = "wasm32")]
-use web_time::Instant;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 
 #[macro_export]
 macro_rules! main_app {
@@ -58,6 +60,18 @@ pub trait Application: 'static + Sized {
 }
 
 pub struct App {}
+
+fn touch_pinch_distance(touches: &HashMap<u64, PhysicalPosition<f64>>) -> f64 {
+    let mut points = touches.values();
+    match (points.next(), points.next()) {
+        (Some(a), Some(b)) => {
+            let dx = a.x - b.x;
+            let dy = a.y - b.y;
+            (dx * dx + dy * dy).sqrt()
+        }
+        _ => 0.0,
+    }
+}
 
 impl App {
     pub fn run<T: Application>(title: &'static str) {
@@ -143,7 +157,7 @@ impl App {
             .formats
             .iter()
             .copied()
-            .find(|f| f.is_srgb())
+            .find(|f| !f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
 
         #[cfg(target_arch = "wasm32")]
@@ -221,6 +235,8 @@ impl App {
 
         let mut last_time = Instant::now();
         let mut last_mouse_pos: Option<(f64, f64)> = None;
+        let mut active_touches: HashMap<u64, PhysicalPosition<f64>> = HashMap::new();
+        let mut last_pinch_distance: Option<f64> = None;
 
         let target_fps = 30.0;
         let target_frame_duration = std::time::Duration::from_secs_f64(1.0 / target_fps);
@@ -271,6 +287,91 @@ impl App {
                     CameraControllerSystem::process_scroll(controller, &delta);
                 }
             }
+            Event::WindowEvent {
+                event: WindowEvent::Touch(touch),
+                ..
+            } => match touch.phase {
+                TouchPhase::Started => {
+                    active_touches.insert(touch.id, touch.location);
+                    if let Some(ref mut controller) = stage.camera_controller {
+                        match active_touches.len() {
+                            1 => CameraControllerSystem::process_mouse_button(
+                                controller,
+                                MouseButton::Left,
+                                ElementState::Pressed,
+                            ),
+                            2 => {
+                                CameraControllerSystem::process_mouse_button(
+                                    controller,
+                                    MouseButton::Left,
+                                    ElementState::Released,
+                                );
+                                last_pinch_distance = Some(touch_pinch_distance(&active_touches));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                TouchPhase::Moved => {
+                    let previous = active_touches.insert(touch.id, touch.location);
+                    match active_touches.len() {
+                        1 => {
+                            if let Some(previous) = previous {
+                                let delta_x = touch.location.x - previous.x;
+                                let delta_y = touch.location.y - previous.y;
+                                if let Some(ref mut controller) = stage.camera_controller {
+                                    CameraControllerSystem::process_mouse(
+                                        controller, delta_x, delta_y,
+                                    );
+                                }
+                            }
+                        }
+                        2 => {
+                            let distance = touch_pinch_distance(&active_touches);
+                            if let Some(last_distance) = last_pinch_distance {
+                                let pinch_delta = distance - last_distance;
+                                if let Some(ref mut controller) = stage.camera_controller {
+                                    CameraControllerSystem::process_pinch(
+                                        controller,
+                                        &MouseScrollDelta::PixelDelta(PhysicalPosition::new(
+                                            0.0,
+                                            pinch_delta,
+                                        )),
+                                    );
+                                }
+                            }
+                            last_pinch_distance = Some(distance);
+                        }
+                        _ => {}
+                    }
+                }
+                TouchPhase::Ended | TouchPhase::Cancelled => {
+                    active_touches.remove(&touch.id);
+                    if let Some(ref mut controller) = stage.camera_controller {
+                        match active_touches.len() {
+                            0 => {
+                                CameraControllerSystem::process_mouse_button(
+                                    controller,
+                                    MouseButton::Left,
+                                    ElementState::Released,
+                                );
+                                last_pinch_distance = None;
+                            }
+                            1 => {
+                                CameraControllerSystem::process_mouse_button(
+                                    controller,
+                                    MouseButton::Left,
+                                    ElementState::Pressed,
+                                );
+                                last_pinch_distance = None;
+                            }
+                            _ => {
+                                last_pinch_distance = Some(touch_pinch_distance(&active_touches));
+                            }
+                        }
+                    }
+                }
+            },
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 window_id,

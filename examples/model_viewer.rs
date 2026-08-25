@@ -33,6 +33,8 @@ impl Application for ModelViewerApp {
             target: Vec3::ZERO,
             distance: CAMERA_DISTANCE,
             start_pitch: 0.15,
+            sensitivity: 0.2,
+            pinch_zoom_speed: 0.1,
             start_yaw: 2.0 * std::f32::consts::PI / 3.0,
             ..Default::default()
         });
