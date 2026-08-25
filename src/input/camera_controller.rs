@@ -163,8 +163,8 @@ impl OrbitCameraControllerSystem {
 
     pub fn process_mouse(controller: &mut OrbitCameraController, mouse_dx: f64, mouse_dy: f64) {
         if controller.is_mouse_pressed {
-            controller.rotate_horizontal = mouse_dx as f32;
-            controller.rotate_vertical = mouse_dy as f32;
+            controller.rotate_horizontal += mouse_dx as f32;
+            controller.rotate_vertical += mouse_dy as f32;
         }
     }
 
@@ -186,8 +186,8 @@ impl OrbitCameraControllerSystem {
     ) {
         let dt = dt.as_secs_f32();
 
-        controller.yaw += controller.rotate_horizontal * controller.sensitivity * dt;
-        controller.pitch += controller.rotate_vertical * controller.sensitivity * dt;
+        controller.yaw += controller.rotate_horizontal * controller.sensitivity * 0.005;
+        controller.pitch += controller.rotate_vertical * controller.sensitivity * 0.005;
 
         controller.rotate_horizontal = 0.0;
         controller.rotate_vertical = 0.0;
@@ -285,8 +285,8 @@ impl FreeCameraControllerSystem {
 
     pub fn process_mouse(controller: &mut FreeCameraController, mouse_dx: f64, mouse_dy: f64) {
         if controller.is_mouse_pressed {
-            controller.rotate_horizontal = mouse_dx as f32;
-            controller.rotate_vertical = mouse_dy as f32;
+            controller.rotate_horizontal += mouse_dx as f32;
+            controller.rotate_vertical += mouse_dy as f32;
         }
     }
 
