@@ -46,7 +46,7 @@ impl MaterialTrait for PhysicalMaterial {
     type Definition = Definition;
     const DOMAIN: MaterialDomain = MaterialDomain::Surface;
     const TYPE: MaterialType = MaterialType::Physical;
-    const LAYOUT: &'static [wgpu::VertexBufferLayout<'static>] = &[Vertex::LAYOUT];
+    const LAYOUT: &'static [Option<wgpu::VertexBufferLayout<'static>>] = &[Some(Vertex::LAYOUT)];
 
     fn get_shader_path() -> &'static str {
         "pbr_material.wgsl"
@@ -333,15 +333,15 @@ impl MaterialDefinitionTrait<PhysicalMaterial> for Definition {
             &wgpu::PipelineLayoutDescriptor {
                 label: Some("Phisical Material Pipeline Layout"),
                 bind_group_layouts: &[
-                    &render_env.pipeline_resources.global,
-                    &render_env.pipeline_resources.model,
-                    &bind_group_layout,
+                    Some(&render_env.pipeline_resources.global),
+                    Some(&render_env.pipeline_resources.model),
+                    Some(&bind_group_layout),
                 ],
-                push_constant_ranges: &[],
+                immediate_size: 0,
             },
         );
 
-        render_env
+        let _ = render_env
             .render_context
             .device
             .push_error_scope(wgpu::ErrorFilter::Validation);
@@ -355,8 +355,7 @@ impl MaterialDefinitionTrait<PhysicalMaterial> for Definition {
 
         let shader_path = base_shaders_path.clone().join(shader_file_path);
 
-        let source = std::fs::read_to_string(&shader_path)
-            .with_context(|| format!("Failed to read shader file at {:?}", &shader_path))?;
+        let source = crate::renderer::shaders::load_shader_source(&shader_path)?;
 
         let label = shader_path
             .to_str()
@@ -377,20 +376,20 @@ impl MaterialDefinitionTrait<PhysicalMaterial> for Definition {
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &shader_module,
-                    entry_point: "vs_main",
+                    entry_point: Some("vs_main"),
                     buffers: pipeline_definition.layout,
                     compilation_options: Default::default(),
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: DEFAULT_DEPTH_FORMAT,
-                    depth_write_enabled: true,
-                    depth_compare: wgpu::CompareFunction::Less,
+                    depth_write_enabled: Some(true),
+                    depth_compare: Some(wgpu::CompareFunction::Less),
                     stencil: wgpu::StencilState::default(),
                     bias: wgpu::DepthBiasState::default(),
                 }),
                 fragment: Some(wgpu::FragmentState {
                     module: &shader_module,
-                    entry_point: "fs_main",
+                    entry_point: Some("fs_main"),
                     targets: &[Some(wgpu::ColorTargetState {
                         format: render_env.render_context.config.format,
                         blend: Some(wgpu::BlendState::REPLACE),
@@ -403,7 +402,8 @@ impl MaterialDefinitionTrait<PhysicalMaterial> for Definition {
                     ..Default::default()
                 },
                 multisample: wgpu::MultisampleState::default(),
-                multiview: None,
+                multiview_mask: None,
+                cache: None,
             },
         );
 
@@ -413,20 +413,20 @@ impl MaterialDefinitionTrait<PhysicalMaterial> for Definition {
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &shader_module,
-                    entry_point: "vs_main",
+                    entry_point: Some("vs_main"),
                     buffers: pipeline_definition.layout,
                     compilation_options: Default::default(),
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: DEFAULT_DEPTH_FORMAT,
-                    depth_write_enabled: true,
-                    depth_compare: wgpu::CompareFunction::Less,
+                    depth_write_enabled: Some(true),
+                    depth_compare: Some(wgpu::CompareFunction::Less),
                     stencil: wgpu::StencilState::default(),
                     bias: wgpu::DepthBiasState::default(),
                 }),
                 fragment: Some(wgpu::FragmentState {
                     module: &shader_module,
-                    entry_point: "fs_main",
+                    entry_point: Some("fs_main"),
                     targets: &[Some(wgpu::ColorTargetState {
                         format: render_env.render_context.config.format,
                         blend: Some(wgpu::BlendState::ALPHA_BLENDING),
@@ -439,7 +439,8 @@ impl MaterialDefinitionTrait<PhysicalMaterial> for Definition {
                     ..Default::default()
                 },
                 multisample: wgpu::MultisampleState::default(),
-                multiview: None,
+                multiview_mask: None,
+                cache: None,
             },
         );
 

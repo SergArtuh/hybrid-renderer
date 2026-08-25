@@ -212,13 +212,13 @@ impl<'a> Provider<'a> {
                 .get_encoder_mut()
                 .expect("Encoder not found")
                 .copy_texture_to_texture(
-                    wgpu::ImageCopyTexture {
+                    wgpu::TexelCopyTextureInfo {
                         texture: &temp_specular_mip_out.texture,
                         mip_level: 0,
                         origin: wgpu::Origin3d::ZERO,
                         aspect: wgpu::TextureAspect::All,
                     },
-                    wgpu::ImageCopyTexture {
+                    wgpu::TexelCopyTextureInfo {
                         texture: &result_texture.texture,
                         mip_level: mip,
                         origin: wgpu::Origin3d::ZERO,

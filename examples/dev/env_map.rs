@@ -334,8 +334,8 @@ pub fn run() {
             .device
             .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: None,
-                bind_group_layouts: &[&texture_bind_group_layout],
-                push_constant_ranges: &[],
+                bind_group_layouts: &[Some(&texture_bind_group_layout)],
+                immediate_size: 0,
             });
 
     let render_pipeline =
@@ -346,13 +346,13 @@ pub fn run() {
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &shader,
-                    entry_point: "vs_main",
-                    buffers: &[VERTEX_LAYOUT],
+                    entry_point: Some("vs_main"),
+                    buffers: &[Some(VERTEX_LAYOUT)],
                     compilation_options: Default::default(),
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
-                    entry_point: "fs_main",
+                    entry_point: Some("fs_main"),
                     targets: &[Some(wgpu::ColorTargetState {
                         format: render_context.config.format,
                         blend: Some(wgpu::BlendState::REPLACE),
@@ -366,7 +366,8 @@ pub fn run() {
                 },
                 depth_stencil: None,
                 multisample: wgpu::MultisampleState::default(),
-                multiview: None,
+                multiview_mask: None,
+                cache: None,
             });
 
     event_loop

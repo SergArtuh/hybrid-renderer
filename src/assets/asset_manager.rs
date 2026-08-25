@@ -1,6 +1,9 @@
-use gltf::material::AlphaMode as GltfAlphaMode;
-
-use crate::assets::skydome::Skydome;
+use crate::assets::assets_resources::{
+    AssetCallback, AssetData, CompletedAssetTask, ModelAssetData, SkydomeAssetData,
+    TextureAssetData,
+};
+use crate::assets::model::ModelAsset;
+use crate::assets::skydome::{Skydome, SkydomeDescriptor};
 use crate::assets::util::gltf_extended_decorator::{
     ClearcoatFactor, ClearcoatRoughnessFactor, ExtendedMaterialDecorator,
 };
@@ -8,7 +11,9 @@ use crate::core::material::{AlphaMode, Material, PhysicalMaterial, SkydomeEnviro
 use crate::core::mesh::{Mesh, MeshData};
 use crate::core::model_node::ModelNode;
 use crate::core::texture::Texture;
-use crate::core::texture_builder::{ComponentPrecision, TextureBuilder, TextureChannels};
+use crate::core::texture_builder::{
+    ComponentPrecision, TextureBuilder, TextureChannels, TextureDescriptor,
+};
 use crate::renderer::RenderingEnvironment;
 use crate::renderer::compute_task::{
     DiffuseIrradianceProvider, EquirectToCubemapProvider, MipmapGeneratorProvider,
@@ -16,97 +21,154 @@ use crate::renderer::compute_task::{
 };
 use crate::renderer::materials::PhysicalMaterialDescriptor;
 use crate::renderer::materials::{MaterialFactory, SkydomeMaterialDescriptor};
+use crate::stage::Stage;
 use crate::util::geometry_generator::MeshUtil;
+use gltf::material::AlphaMode as GltfAlphaMode;
 use std::cell::Cell;
-use std::fs::File;
-use std::io::Read;
 use std::path::Path;
 use std::sync::Arc;
 
-pub struct GltfAsset {
-    pub name: String,
-    pub scene_roots: Vec<Arc<ModelNode>>,
-}
+use std::sync::mpsc::Sender;
 
 pub struct AssetManager<'a> {
-    render_env: &'a RenderingEnvironment<'a>,
+    pub render_env: &'a RenderingEnvironment<'a>,
+    sender: Sender<CompletedAssetTask>,
+    _marker: std::marker::PhantomData<&'a ()>,
 }
 
 impl<'a> AssetManager<'a> {
     pub fn new(render_env: &'a RenderingEnvironment) -> Self {
-        Self { render_env }
+        Self {
+            render_env,
+            sender: render_env.asset_resources.sender.clone(),
+            _marker: std::marker::PhantomData,
+        }
     }
 
-    pub fn load_gltf_models(&self, path: impl AsRef<Path>) -> anyhow::Result<GltfAsset> {
-        let (document, buffers, images) = gltf::import(path)?;
+    pub fn update(render_env: &mut RenderingEnvironment, stage: &mut Stage) {
+        let tasks: Vec<CompletedAssetTask> =
+            render_env.asset_resources.receiver.try_iter().collect();
 
-        let asset_name = document
-            .default_scene()
-            .and_then(|s| s.name())
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "Untitled_Scene".to_string());
+        for task in tasks {
+            if let AssetData::Texture(texture_data) = task.data {
+                let texture = TextureBuilder::new(
+                    &render_env.render_context.device,
+                    &render_env.render_context.queue,
+                )
+                .from_bytes(&texture_data.bytes)
+                // TODO: check descriptor for filter mode
+                .with_filter(wgpu::FilterMode::Nearest, wgpu::FilterMode::Nearest)
+                .build();
 
-        let mut gltf_asset = GltfAsset {
-            name: asset_name.clone(),
-            scene_roots: Vec::new(),
-        };
+                if let AssetCallback::Texture(callback) = task.callback {
+                    callback(render_env, stage, texture);
+                }
+            } else if let AssetData::Skydome(skydome_data) = task.data {
+                let skydome =
+                    Self::create_skydome(render_env, skydome_data.bytes, skydome_data.descriptor);
 
-        let textures = self.load_textures(&document, &images);
-
-        let material_factory = MaterialFactory::new(&self.render_env);
-        for scene in document.scenes() {
-            for node in scene.nodes() {
-                let root_node =
-                    self.load_node(&node, &buffers, &textures, &document, &material_factory)?;
-                gltf_asset.scene_roots.push(root_node);
+                if let AssetCallback::Skydome(callback) = task.callback {
+                    callback(render_env, stage, skydome);
+                }
+            } else if let AssetData::Model(model_data) = task.data {
+                let model = Self::create_model(render_env, model_data.bytes).unwrap();
+                if let AssetCallback::Model(callback) = task.callback {
+                    callback(render_env, stage, model);
+                }
+            } else if let AssetData::Bytes(bytes) = task.data
+                && let AssetCallback::Bytes(callback) = task.callback
+            {
+                callback(render_env, stage, bytes);
             }
         }
-
-        println!("Loaded gltf asset: {}", asset_name);
-        Ok(gltf_asset)
     }
 
-    pub fn load_skydome(
+    pub fn load_texture<F>(
         &self,
-        path: impl AsRef<Path>,
-        radius: f32,
-        factor: f32,
-    ) -> anyhow::Result<Skydome> {
-        let mut file = File::open(path).expect("File not found!");
-        let mut diffuse_bytes = Vec::<u8>::new();
-        file.read_to_end(&mut diffuse_bytes).unwrap();
+        path_or_url: impl AsRef<Path> + Send + 'static,
+        descriptor: TextureDescriptor,
+        on_loaded: F,
+    ) where
+        F: FnOnce(&mut RenderingEnvironment, &mut Stage, Texture) + Send + 'static,
+    {
+        let path = path_or_url.as_ref().to_string_lossy().to_string();
+        let sender = self.sender.clone();
+        let callback = Box::new(on_loaded);
 
+        Self::spawn_task(async move {
+            if let Ok(bytes) = Self::fetch_bytes(&path).await {
+                let _ = sender.send(CompletedAssetTask {
+                    data: AssetData::Texture(TextureAssetData { bytes, descriptor }),
+                    callback: AssetCallback::Texture(callback),
+                });
+            } else {
+                #[cfg(debug_assertions)]
+                eprintln!("[AssetManager] Failed to load texture: {}", path);
+            }
+        });
+    }
+
+    pub fn load_skydome<F>(
+        &self,
+        path_or_url: impl AsRef<Path> + Send + 'static,
+        descriptor: SkydomeDescriptor,
+        on_loaded: F,
+    ) where
+        F: FnOnce(&mut RenderingEnvironment, &mut Stage, Skydome) + Send + 'static,
+    {
+        let path = path_or_url.as_ref().to_string_lossy().to_string();
+        let sender = self.sender.clone();
+        let callback = Box::new(on_loaded);
+
+        Self::spawn_task(async move {
+            if let Ok(bytes) = Self::fetch_bytes(&path).await {
+                let _ = sender.send(CompletedAssetTask {
+                    data: AssetData::Skydome(SkydomeAssetData { bytes, descriptor }),
+                    callback: AssetCallback::Skydome(callback),
+                });
+            } else {
+                #[cfg(debug_assertions)]
+                eprintln!("[AssetManager] Failed to load skydome: {}", path);
+            }
+        });
+    }
+
+    pub fn create_skydome(
+        render_env: &RenderingEnvironment,
+        bytes: Vec<u8>,
+        descriptor: SkydomeDescriptor,
+    ) -> Skydome {
         let environment_map_texture = Arc::new(
             TextureBuilder::new(
-                &self.render_env.render_context.device,
-                &self.render_env.render_context.queue,
+                &render_env.render_context.device,
+                &render_env.render_context.queue,
             )
-            .from_bytes(&diffuse_bytes)
+            .from_bytes(&bytes)
             .with_wgpu_format(wgpu::TextureFormat::Rgba16Float)
             .with_filter(wgpu::FilterMode::Linear, wgpu::FilterMode::Linear)
             .build(),
         );
 
         let mesh = Arc::new(Mesh::from_data(
-            &self.render_env.render_context.device,
+            &render_env.render_context.device,
             &MeshUtil::new_procedural_quad(),
         ));
 
-        let material_factory = MaterialFactory::new(&self.render_env);
+        let material_factory = MaterialFactory::new(&render_env);
 
-        let cubemap_texture_lod_0 = EquirectToCubemapProvider::new(&self.render_env)
+        let cubemap_texture_lod_0 = EquirectToCubemapProvider::new(&render_env)
             .process(&environment_map_texture)
             .unwrap();
 
-        let cubemap_texture = MipmapGeneratorProvider::new(&self.render_env)
+        let cubemap_texture = MipmapGeneratorProvider::new(&render_env)
             .process(&cubemap_texture_lod_0)
             .unwrap();
 
-        let irradiance_cubemap = DiffuseIrradianceProvider::new(&self.render_env)
+        let irradiance_cubemap = DiffuseIrradianceProvider::new(&render_env)
             .process(&cubemap_texture, 16)
             .unwrap();
 
-        let specular_cubemap = SpecularPrefilterProvider::new(&self.render_env)
+        let specular_cubemap = SpecularPrefilterProvider::new(&render_env)
             .process(&cubemap_texture)
             .unwrap();
 
@@ -115,19 +177,78 @@ impl<'a> AssetManager<'a> {
                 skybox_texture: Arc::clone(&cubemap_texture),
                 irradiance_texture: Arc::clone(&irradiance_cubemap),
                 specular_texture: Arc::clone(&specular_cubemap),
-                dome_radius: radius,
-                dome_factor: factor,
+                dome_radius: descriptor.radius,
+                dome_factor: descriptor.factor,
             },
         );
 
-        Ok(Skydome {
+        Skydome {
             mesh,
             material: Arc::new(Material::Skydome(material)),
-        })
+        }
+    }
+
+    pub fn load_model<F>(&self, path_or_url: impl AsRef<Path> + Send + 'static, on_loaded: F)
+    where
+        F: FnOnce(&mut RenderingEnvironment, &mut Stage, ModelAsset) + Send + 'static,
+    {
+        let path = path_or_url.as_ref().to_string_lossy().to_string();
+        let sender = self.sender.clone();
+        let callback = Box::new(on_loaded);
+
+        Self::spawn_task(async move {
+            if let Ok(bytes) = Self::fetch_bytes(&path).await {
+                let _ = sender.send(CompletedAssetTask {
+                    data: AssetData::Model(ModelAssetData { bytes }),
+                    callback: AssetCallback::Model(callback),
+                });
+            } else {
+                #[cfg(debug_assertions)]
+                eprintln!("[AssetManager] Failed to load model: {}", path);
+            }
+        });
+    }
+
+    pub fn create_model(
+        render_env: &RenderingEnvironment,
+        bytes: Vec<u8>,
+    ) -> anyhow::Result<ModelAsset> {
+        let (document, buffers, images) = gltf::import_slice(bytes)?;
+
+        let asset_name = document
+            .default_scene()
+            .and_then(|s| s.name())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "Untitled_Scene".to_string());
+
+        let mut gltf_asset = ModelAsset {
+            name: asset_name.clone(),
+            scene_roots: Vec::new(),
+        };
+
+        let textures = Self::load_textures(render_env, &document, &images);
+
+        let material_factory = MaterialFactory::new(&render_env);
+        for scene in document.scenes() {
+            for node in scene.nodes() {
+                let root_node = Self::load_node(
+                    render_env,
+                    &node,
+                    &buffers,
+                    &textures,
+                    &document,
+                    &material_factory,
+                )?;
+                gltf_asset.scene_roots.push(root_node);
+            }
+        }
+
+        println!("Loaded gltf asset: {}", asset_name);
+        Ok(gltf_asset)
     }
 
     fn load_node(
-        &self,
+        render_env: &RenderingEnvironment,
         node: &gltf::Node,
         buffers: &[gltf::buffer::Data],
         textures: &Vec<Arc<Texture>>,
@@ -163,7 +284,7 @@ impl<'a> AssetManager<'a> {
             };
 
             let mesh = Arc::new(Mesh::from_data(
-                &self.render_env.render_context.device,
+                &render_env.render_context.device,
                 &mesh_data,
             ));
 
@@ -256,7 +377,8 @@ impl<'a> AssetManager<'a> {
 
         let mut children = Vec::new();
         for child in node.children() {
-            children.push(self.load_node(
+            children.push(Self::load_node(
+                render_env,
                 &child,
                 buffers,
                 textures,
@@ -276,7 +398,7 @@ impl<'a> AssetManager<'a> {
     }
 
     fn load_textures(
-        &self,
+        render_env: &RenderingEnvironment,
         document: &gltf::Document,
         images: &[gltf::image::Data],
     ) -> Vec<Arc<Texture>> {
@@ -320,8 +442,8 @@ impl<'a> AssetManager<'a> {
                     _ => panic!("Unsupported format: {:?}", img_data.format),
                 };
                 let builder = TextureBuilder::new(
-                    &self.render_env.render_context.device,
-                    &self.render_env.render_context.queue,
+                    &render_env.render_context.device,
+                    &render_env.render_context.queue,
                 )
                 .from_raw(&img_data.pixels, img_data.width, img_data.height)
                 .with_label(label)
@@ -332,5 +454,78 @@ impl<'a> AssetManager<'a> {
                 Arc::new(builder.build())
             })
             .collect()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn spawn_task<F>(future: F)
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        std::thread::spawn(move || {
+            pollster::block_on(future);
+        });
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn spawn_task<F>(future: F)
+    where
+        F: std::future::Future<Output = ()> + 'static,
+    {
+        wasm_bindgen_futures::spawn_local(future);
+    }
+
+    async fn fetch_bytes(path: &str) -> Result<Vec<u8>, String> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            use wasm_bindgen::JsCast;
+            use wasm_bindgen_futures::JsFuture;
+            use web_sys::{RequestInit, RequestMode, Response, js_sys};
+
+            let opts = RequestInit::new();
+            opts.set_method("GET");
+            opts.set_mode(RequestMode::Cors);
+
+            let window = web_sys::window().ok_or("No global window found")?;
+            let request = web_sys::Request::new_with_str_and_init(path, &opts)
+                .map_err(|e| format!("Failed to create request: {:?}", e))?;
+
+            let resp_value = JsFuture::from(window.fetch_with_request(&request))
+                .await
+                .map_err(|e| format!("Fetch failed: {:?}", e))?;
+
+            let resp: Response = resp_value
+                .dyn_into()
+                .map_err(|_| "Response is not Response type")?;
+
+            if !resp.ok() {
+                return Err(format!("HTTP error, status: {}", resp.status()));
+            }
+
+            let array_buffer = JsFuture::from(resp.array_buffer().map_err(|e| format!("{:?}", e))?)
+                .await
+                .map_err(|e| format!("ArrayBuffer failed: {:?}", e))?;
+
+            let uint8_array = js_sys::Uint8Array::new(&array_buffer);
+            Ok(uint8_array.to_vec())
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if path.starts_with("http://") || path.starts_with("https://") {
+                let response = ureq::get(path)
+                    .call()
+                    .map_err(|e| format!("HTTP request failed: {}", e))?;
+
+                let mut bytes = Vec::new();
+                response
+                    .into_reader()
+                    .read_to_end(&mut bytes)
+                    .map_err(|e| format!("Failed to read response body: {}", e))?;
+
+                Ok(bytes)
+            } else {
+                std::fs::read(path).map_err(|e| format!("Failed to read file '{}': {}", path, e))
+            }
+        }
     }
 }

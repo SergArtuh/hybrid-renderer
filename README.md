@@ -23,7 +23,7 @@ A real-time 3D rendering engine written in Rust on top of [wgpu](https://github.
 ## System Requirements & Target Backends
 
 - **Primary Target:** Cross-platform GPU execution across all major backends via `wgpu`, with rendering pipeline optimizations designed specifically around **Vulkan** architecture.
-- **Future Targets:** WebGPU / Web compilation (experimental/planned).
+- **Secondary Targets:** WebGPU / Web compilation.
 
 ## Getting started
 
@@ -37,14 +37,22 @@ A real-time 3D rendering engine written in Rust on top of [wgpu](https://github.
    python scripts/fetch_assets.py
    ```
    This is a no-op if `./assets` already exists and is non-empty.
-3. Run an example:
+3. (Desktop) Run an example:
    ```bash
    cargo run --example model_viewer
    ```
+   (Web) Run an example:
+   ```bash
+   python scripts/build.py
+   python scripts/serve.py
+   ```
 
-## Asset management
+## Asset Management
 
-Large 3D models and textures are kept out of the git repository and distributed through GitHub Releases instead.
+Large 3D models and textures are kept out of the git repository to maintain a clean history. They are managed and served through two channels:
+
+- **Cloudflare R2 Storage** — Hosted at [pub-227d210eb508481688aaf1983484a58a.r2.dev](https://pub-227d210eb508481688aaf1983484a58a.r2.dev). Primarily serves high-bandwidth assets and texture suites directly to the WebGPU/WASM builds for fast in-browser loading (also used by desktop builds).
+- **GitHub Releases** — Used for offline distribution, archival storage, and manual setup of sample assets.
 
 ### Fetching assets
 
@@ -65,4 +73,4 @@ python scripts/publish_assets.py
 ## Future plans
 
 - **Distance Field Illumination** — shadows, AO, GI, based on distance fields
-- **Web support** — running the engine in the browser via WebGPU/WASM
+- **Progressive Asset Loading** — streaming model LODs and textures asynchronously for fast initial rendering

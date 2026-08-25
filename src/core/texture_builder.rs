@@ -70,16 +70,76 @@ impl IntoWgpuFormat for wgpu::TextureFormat {
             wgpu::TextureFormat::R16Float => ComponentPrecision::F16,
             _ => panic!("Unsupported format to linear: {:?}", self),
         };
-        let is_srgb = match self {
-            wgpu::TextureFormat::Rgba8UnormSrgb => true,
-            _ => false,
-        };
+        let is_srgb = matches!(self, wgpu::TextureFormat::Rgba8UnormSrgb);
         TextureFormatDescriptor {
             channels,
             precision,
             is_srgb,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum TextureFilterMode {
+    #[default]
+    Linear,
+    Nearest,
+}
+
+impl TextureFilterMode {
+    #[allow(dead_code)]
+    fn to_wgpu_filter_mode(self) -> wgpu::FilterMode {
+        match self {
+            TextureFilterMode::Linear => wgpu::FilterMode::Linear,
+            TextureFilterMode::Nearest => wgpu::FilterMode::Nearest,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum TextureAddressMode {
+    #[default]
+    ClampToEdge,
+    Repeat,
+    MirrorRepeat,
+}
+
+impl TextureAddressMode {
+    #[allow(dead_code)]
+    fn to_wgpu_address_mode(self) -> wgpu::AddressMode {
+        match self {
+            TextureAddressMode::ClampToEdge => wgpu::AddressMode::ClampToEdge,
+            TextureAddressMode::Repeat => wgpu::AddressMode::Repeat,
+            TextureAddressMode::MirrorRepeat => wgpu::AddressMode::MirrorRepeat,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum TextureMipmapFilterMode {
+    #[default]
+    Nearest,
+    Linear,
+}
+
+impl TextureMipmapFilterMode {
+    #[allow(dead_code)]
+    fn to_wgpu_filter_mode(self) -> wgpu::FilterMode {
+        match self {
+            TextureMipmapFilterMode::Nearest => wgpu::FilterMode::Nearest,
+            TextureMipmapFilterMode::Linear => wgpu::FilterMode::Linear,
+        }
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct TextureDescriptor {
+    pub mag_filter: TextureFilterMode,
+    pub min_filter: TextureFilterMode,
+    pub mipmap_filter: TextureMipmapFilterMode,
+    pub address_mode: TextureAddressMode,
+    pub mip_level_count: u32,
+    pub is_cubemap: bool,
 }
 
 pub struct TextureBuilder<'a> {
@@ -89,7 +149,7 @@ pub struct TextureBuilder<'a> {
     format: TextureFormatDescriptor,
     mag_filter: wgpu::FilterMode,
     min_filter: wgpu::FilterMode,
-    mipmap_filter: wgpu::FilterMode,
+    mipmap_filter: wgpu::MipmapFilterMode,
     address_mode: wgpu::AddressMode,
     source: TextureSource<'a>,
     size: Option<(u32, u32)>,
@@ -111,7 +171,7 @@ impl<'a> TextureBuilder<'a> {
             },
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             address_mode: wgpu::AddressMode::ClampToEdge,
             source: TextureSource::Empty,
             size: None,
@@ -152,7 +212,7 @@ impl<'a> TextureBuilder<'a> {
         self
     }
 
-    pub fn with_mipmap_filter(mut self, filter: wgpu::FilterMode) -> Self {
+    pub fn with_mipmap_filter(mut self, filter: wgpu::MipmapFilterMode) -> Self {
         self.mipmap_filter = filter;
         self
     }
@@ -229,20 +289,20 @@ impl<'a> TextureBuilder<'a> {
         let channels = channel_count * byte_per_chanel;
 
         let rgba_data = match &rgba {
-            RawTextureData::U8(data) => bytemuck::cast_slice(&data),
-            RawTextureData::F16(data) => bytemuck::cast_slice(&data),
-            RawTextureData::F32(data) => bytemuck::cast_slice(&data),
+            RawTextureData::U8(data) => bytemuck::cast_slice(data),
+            RawTextureData::F16(data) => bytemuck::cast_slice(data),
+            RawTextureData::F32(data) => bytemuck::cast_slice(data),
         };
 
         self.queue.write_texture(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
             rgba_data,
-            wgpu::ImageDataLayout {
+            wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(channels * width),
                 rows_per_image: Some(height),
@@ -365,6 +425,8 @@ impl<'a> TextureBuilder<'a> {
             }
         };
 
+        let layers = if self.is_cubemap { 6 } else { 1 };
+
         match color_type.unwrap() {
             image::ColorType::Rgba32F | image::ColorType::Rgb32F => {
                 let rgba = img.to_rgba32f();
@@ -372,25 +434,54 @@ impl<'a> TextureBuilder<'a> {
                 if self.format.precision == ComponentPrecision::F16 {
                     let f16_data: Vec<f16> =
                         rgba.into_raw().into_iter().map(f16::from_f32).collect();
+                    let f16_data = if layers > 1 {
+                        f16_data.repeat(layers)
+                    } else {
+                        f16_data
+                    };
                     (w, h, RawTextureData::F16(f16_data))
                 } else {
-                    (w, h, RawTextureData::F32(rgba.into_raw()))
+                    let data = rgba.into_raw();
+                    let data = if layers > 1 {
+                        data.repeat(layers)
+                    } else {
+                        data
+                    };
+                    (w, h, RawTextureData::F32(data))
                 }
             }
             image::ColorType::Rgba8 | image::ColorType::Rgb8 => {
                 let rgba = img.to_rgba8();
                 let (w, h) = rgba.dimensions();
-                (w, h, RawTextureData::U8(rgba.into_raw()))
+                let data = rgba.into_raw();
+                let data = if layers > 1 {
+                    data.repeat(layers)
+                } else {
+                    data
+                };
+                (w, h, RawTextureData::U8(data))
             }
             image::ColorType::La8 => {
                 let luma = img.to_luma_alpha8();
                 let (w, h) = luma.dimensions();
-                (w, h, RawTextureData::U8(luma.into_raw()))
+                let data = luma.into_raw();
+                let data = if layers > 1 {
+                    data.repeat(layers)
+                } else {
+                    data
+                };
+                (w, h, RawTextureData::U8(data))
             }
             image::ColorType::L8 => {
                 let luma = img.to_luma8();
                 let (w, h) = luma.dimensions();
-                (w, h, RawTextureData::U8(luma.into_raw()))
+                let data = luma.into_raw();
+                let data = if layers > 1 {
+                    data.repeat(layers)
+                } else {
+                    data
+                };
+                (w, h, RawTextureData::U8(data))
             }
             _ => panic!("Unsupported color type: {:?}", color_type),
         }
@@ -402,37 +493,61 @@ impl<'a> TextureBuilder<'a> {
         width: u32,
         height: u32,
     ) -> (u32, u32, RawTextureData) {
+        let layers = if self.is_cubemap { 6 } else { 1 };
+
         if self.format.precision == ComponentPrecision::Auto
             || self.format.precision == ComponentPrecision::U8
         {
             match self.format.channels {
                 TextureChannels::RGB => {
-                    let mut rgba = Vec::with_capacity(pixels.len() / 3 * 4);
+                    let mut rgba = Vec::with_capacity((pixels.len() / 3 * 4) * layers);
                     for rgb in pixels.chunks_exact(3) {
                         rgba.extend_from_slice(rgb);
                         rgba.push(255);
                     }
+                    let rgba = if layers > 1 {
+                        rgba.repeat(layers)
+                    } else {
+                        rgba
+                    };
                     (width, height, RawTextureData::U8(rgba))
                 }
-                TextureChannels::R => (width, height, RawTextureData::U8(pixels.to_vec())),
-                TextureChannels::RG => (width, height, RawTextureData::U8(pixels.to_vec())),
-                TextureChannels::RGBA => (width, height, RawTextureData::U8(pixels.to_vec())),
+                _ => {
+                    let data = pixels.to_vec();
+                    let data = if layers > 1 {
+                        data.repeat(layers)
+                    } else {
+                        data
+                    };
+                    (width, height, RawTextureData::U8(data))
+                }
             }
         } else if self.format.precision == ComponentPrecision::F16 {
             match self.format.channels {
                 TextureChannels::RGB => {
-                    let mut rgba = Vec::with_capacity(pixels.len() / 3 * 4);
+                    let mut rgba = Vec::with_capacity((pixels.len() / 3 * 4) * layers);
                     // Assuming raw f16 bytes are passed (2 bytes per channel)
                     let f16_pixels = bytemuck::cast_slice::<u8, f16>(pixels);
                     for rgb in f16_pixels.chunks_exact(3) {
                         rgba.extend_from_slice(rgb);
                         rgba.push(f16::from_f32(1.0));
                     }
+                    let rgba = if layers > 1 {
+                        rgba.repeat(layers)
+                    } else {
+                        rgba
+                    };
                     (width, height, RawTextureData::F16(rgba))
                 }
                 _ => {
                     let f16_pixels = bytemuck::cast_slice::<u8, f16>(pixels);
-                    (width, height, RawTextureData::F16(f16_pixels.to_vec()))
+                    let data = f16_pixels.to_vec();
+                    let data = if layers > 1 {
+                        data.repeat(layers)
+                    } else {
+                        data
+                    };
+                    (width, height, RawTextureData::F16(data))
                 }
             }
         } else {

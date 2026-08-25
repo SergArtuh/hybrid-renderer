@@ -4,14 +4,15 @@ use std::sync::Arc;
 
 use crate::{
     assets::{camera::Camera, model::Model, skydome::Skydome},
-    core::material::AlphaMode,
-    core::model_node::ModelNode,
+    core::{material::AlphaMode, model_node::ModelNode},
+    input::camera_controller::CameraController,
     stage::frame_data::{FrameData, RenderItem},
 };
 
 pub struct Stage {
     pub main_camera: Camera,
-    models: Vec<Model>,
+    pub camera_controller: Option<CameraController>,
+    pub models: Vec<Model>,
     skydome: Option<Skydome>,
 }
 
@@ -19,6 +20,7 @@ impl Stage {
     pub fn new(camera: Camera) -> Self {
         Self {
             main_camera: camera,
+            camera_controller: None,
             models: Vec::new(),
             skydome: None,
         }
@@ -30,6 +32,10 @@ impl Stage {
 
     pub fn set_skydome(&mut self, skydome: Skydome) {
         self.skydome = Some(skydome);
+    }
+
+    pub fn set_camera_controller(&mut self, camera_controller: CameraController) {
+        self.camera_controller = Some(camera_controller);
     }
 
     pub fn make_frame_data(&self) -> FrameData {

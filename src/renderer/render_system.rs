@@ -35,10 +35,26 @@ impl<'a> RendererSystem {
     ) -> FrameTarget {
         let render_context = &rendering_environment.render_context;
         let surface_texture = match render_context.surface.get_current_texture() {
-            Ok(output) => output,
-            Err(e) => {
-                eprintln!("Failed to get current texture: {:?}", e);
-                panic!("Failed to get current texture");
+            wgpu::CurrentSurfaceTexture::Success(texture) => texture,
+            wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
+            wgpu::CurrentSurfaceTexture::Timeout => {
+                eprintln!("Timeout acquired surface texture");
+                panic!("Timeout acquired surface texture");
+            }
+            wgpu::CurrentSurfaceTexture::Outdated => {
+                eprintln!("Surface is outdated");
+                panic!("Surface is outdated");
+            }
+            wgpu::CurrentSurfaceTexture::Lost => {
+                eprintln!("Surface is lost");
+                panic!("Surface is lost");
+            }
+            wgpu::CurrentSurfaceTexture::Validation => {
+                eprintln!("Surface texture validation failed");
+                panic!("Surface texture validation failed");
+            }
+            other => {
+                panic!("Failed to get current texture: {:?}", other);
             }
         };
 
@@ -106,7 +122,7 @@ impl<'a> RendererSystem {
             .queue
             .submit(std::iter::once(target.encoder.finish()));
         //render_context.device.poll(wgpu::Maintain::Wait);
-        target.surface_texture.present();
+        render_context.queue.present(target.surface_texture);
     }
 
     fn create_render_pass(
@@ -128,6 +144,7 @@ impl<'a> RendererSystem {
                     }),
                     store: wgpu::StoreOp::Store,
                 },
+                depth_slice: None,
             })],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: &rendering_environment.render_resources.depth_texture_view,
@@ -139,6 +156,7 @@ impl<'a> RendererSystem {
             }),
             occlusion_query_set: None,
             timestamp_writes: None,
+            multiview_mask: None,
         });
         render_pass
     }

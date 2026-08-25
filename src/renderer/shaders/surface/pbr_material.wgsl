@@ -166,5 +166,5 @@ fn fs_main(in: VertexOutput, @builtin(front_facing) is_front: bool) -> @location
 
     
     let gamma_corrected = pow(color, vec3(INV_GAMMA));
-    return vec4<f32>(color, alpha);
+    return vec4<f32>(gamma_corrected, alpha);
 }

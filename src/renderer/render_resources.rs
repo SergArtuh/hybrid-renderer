@@ -25,7 +25,7 @@ pub struct RenderResources {
 
 impl RenderResources {
     pub fn new(render_context: &RenderContext, pipeline_resources: &PipelineResources) -> Self {
-        render_context
+        let _ = render_context
             .device
             .push_error_scope(wgpu::ErrorFilter::Validation);
 
@@ -38,7 +38,7 @@ impl RenderResources {
                 address_mode_w: wgpu::AddressMode::Repeat,
                 mag_filter: wgpu::FilterMode::Linear,
                 min_filter: wgpu::FilterMode::Linear,
-                mipmap_filter: wgpu::FilterMode::Linear,
+                mipmap_filter: wgpu::MipmapFilterMode::Linear,
                 ..Default::default()
             });
         let common_nearest_sampler =
@@ -50,7 +50,7 @@ impl RenderResources {
                     address_mode_w: wgpu::AddressMode::Repeat,
                     mag_filter: wgpu::FilterMode::Nearest,
                     min_filter: wgpu::FilterMode::Nearest,
-                    mipmap_filter: wgpu::FilterMode::Nearest,
+                    mipmap_filter: wgpu::MipmapFilterMode::Nearest,
                     ..Default::default()
                 });
 

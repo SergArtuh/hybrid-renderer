@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::Context;
-
 use crate::{
     core::{
         compute_task::{ComputeTaskTrait, ComputeTaskType},
@@ -75,13 +73,12 @@ impl PipelineSystem {
         let pipeline_layout = render_env.render_context.device.create_pipeline_layout(
             &wgpu::PipelineLayoutDescriptor {
                 label: Some(&format!("{:?} Layout", task_type)),
-                bind_group_layouts: &[&bind_group_layout],
-                push_constant_ranges: &[],
+                bind_group_layouts: &[Some(&bind_group_layout)],
+                immediate_size: 0,
             },
         );
 
-        let source = std::fs::read_to_string(shader_path.clone())
-            .with_context(|| format!("Failed to read shader file at {:?}", shader_path.clone()));
+        let source = crate::renderer::shaders::load_shader_source(&shader_path);
 
         let source = match source {
             Ok(source) => source,
@@ -104,11 +101,12 @@ impl PipelineSystem {
                 label: Some(&format!("{:?} Pipeline", task_type)),
                 layout: Some(&pipeline_layout),
                 module: &shader_module,
-                entry_point: T::entry_point(),
+                entry_point: Some(T::entry_point()),
                 compilation_options: wgpu::PipelineCompilationOptions {
-                    constants: &std::collections::HashMap::new(),
+                    constants: &[],
                     zero_initialize_workgroup_memory: false,
                 },
+                cache: None,
             },
         );
 

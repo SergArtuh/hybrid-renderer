@@ -68,7 +68,7 @@ pub trait MaterialTrait: Sized {
     type Definition;
     const TYPE: MaterialType;
     const DOMAIN: MaterialDomain;
-    const LAYOUT: &[wgpu::VertexBufferLayout<'static>];
+    const LAYOUT: &'static [Option<wgpu::VertexBufferLayout<'static>>];
 
     fn get_shader_path() -> &'static str;
 
@@ -89,7 +89,7 @@ pub trait MaterialTrait: Sized {
 pub struct MaterialDefinition {
     pub shader_path: PathBuf,
     pub material_type: MaterialType,
-    pub layout: &'static [wgpu::VertexBufferLayout<'static>],
+    pub layout: &'static [Option<wgpu::VertexBufferLayout<'static>>],
 }
 
 #[repr(C)]

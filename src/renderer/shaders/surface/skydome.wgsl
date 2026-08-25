@@ -21,6 +21,9 @@ struct SkydomeUniform {
 
 @group(2) @binding(2) var<uniform> skydome_uniform: SkydomeUniform;
 
+const GAMMA: f32 = 2.2;
+const INV_GAMMA: f32 = 1.0 / GAMMA;
+
 
 @vertex
 fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> VertexOutput {
@@ -70,6 +73,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     //let hdr_color = textureSampleLevel(t_specular, s_texture, final_dir, 3.0);
     //let tone_mapped_rgb = hdr_color.rgb / (hdr_color.rgb + vec3(1.0));
     let tone_mapped_rgb = hdr_color.rgb;
+
+    let gamma_corrected = pow(tone_mapped_rgb, vec3(INV_GAMMA));
+    return vec4<f32>(gamma_corrected, 1.0);
     
-    return vec4<f32>(tone_mapped_rgb, 1.0);
+    
 }
