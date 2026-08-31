@@ -24,6 +24,9 @@ use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use winit::platform::web::EventLoopExtWebSys;
 
+#[cfg(target_arch = "wasm32")]
+use web_sys::window;
+
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 #[cfg(target_arch = "wasm32")]
@@ -432,5 +435,53 @@ impl App {
 
         #[cfg(not(target_arch = "wasm32"))]
         event_loop.run(event_handler).unwrap();
+    }
+}
+
+pub struct Loader;
+
+impl Loader {
+    pub fn show() {
+        Loader::set_loader_visible(true);
+    }
+
+    pub fn hide() {
+        Loader::set_loader_visible(false);
+    }
+
+    #[allow(unused_variables)]
+    fn set_loader_visible(visible: bool) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let window = match window() {
+                Some(w) => w,
+                None => return,
+            };
+
+            let document = match window.document() {
+                Some(d) => d,
+                None => return,
+            };
+
+            if let Some(loader) = document.get_element_by_id("loader") {
+                if let Ok(html_el) = loader.dyn_into::<web_sys::HtmlElement>() {
+                    let style = html_el.style();
+                    if visible {
+                        let _ = style.set_property("display", "flex");
+                    } else {
+                        let _ = style.set_property("display", "none");
+                    }
+                }
+            }
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if visible {
+                println!("Loading...");
+            } else {
+                println!("Loading Completed!");
+            }
+        }
     }
 }
