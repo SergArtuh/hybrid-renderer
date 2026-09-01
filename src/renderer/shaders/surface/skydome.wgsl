@@ -62,20 +62,20 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let sphere_center = vec3<f32>(0.0, sphere_offset_y, 0.0);
 
     let t_sphere = get_ray_sphere_t(cam_pos, view_dir, sphere_center, radius);
-    let t_floor = -cam_pos.y / (view_dir.y - 0.000001);
-    let is_floor = select(0.0, 1.0, t_floor > 0.0 && t_floor < t_sphere);
+
+    let ray_y = select(view_dir.y, -0.000001, abs(view_dir.y) < 0.000001);
+    let t_floor = -cam_pos.y / ray_y;
+
+    let hits_floor_plane = cam_pos.y > 0.0 && view_dir.y < 0.0 && t_floor > 0.0 && t_floor < t_sphere;
+    let is_floor = select(0.0, 1.0, hits_floor_plane);
+
     let t = mix(t_sphere, t_floor, is_floor);
     let hit_point = cam_pos + view_dir * t;
     let final_dir = normalize(hit_point - sphere_center);
 
     let hdr_color = textureSample(t_cubemap, s_texture, final_dir);
-    //let hdr_color = textureSampleLevel(t_cubemap, s_texture, final_dir, 3.0);
-    //let hdr_color = textureSampleLevel(t_specular, s_texture, final_dir, 3.0);
-    //let tone_mapped_rgb = hdr_color.rgb / (hdr_color.rgb + vec3(1.0));
     let tone_mapped_rgb = hdr_color.rgb;
-
     let gamma_corrected = pow(tone_mapped_rgb, vec3(INV_GAMMA));
+
     return vec4<f32>(gamma_corrected, 1.0);
-    
-    
 }

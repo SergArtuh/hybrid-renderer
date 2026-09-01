@@ -10,6 +10,13 @@
       margin: 0;
       height: 100%;
       background: #101010;
+      overflow: hidden;
+    }
+
+    #canvas-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
     }
 
     canvas {
@@ -17,11 +24,65 @@
       width: 100%;
       height: 100%;
     }
+
+    #loader {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      z-index: 10;
+      pointer-events: none;
+
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 10px;
+
+      padding: 10px 16px;
+      background: rgba(20, 20, 20, 0.75);
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+
+      color: #ffffff;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+
+      transition: opacity 0.3s ease, visibility 0.3s ease;
+    }
+
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-left-color: #646cff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      box-sizing: border-box;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .hidden {
+      opacity: 0;
+      visibility: hidden;
+    }
   </style>
 </head>
 
 <body>
-  <canvas id="wgpu-canvas"></canvas>
+  <div id="canvas-container">
+    <canvas id="wgpu-canvas"></canvas>
+    <div id="loader">
+      <div class="spinner"></div>
+      <div id="loader-text">Loading...</div>
+    </div>
+  </div>
+
   <script type="module">
     import init from "./pkg/app.js";
     init();

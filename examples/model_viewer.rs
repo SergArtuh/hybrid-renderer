@@ -12,7 +12,7 @@ use hybrid_renderer::stage::Stage;
 
 use hybrid_renderer::assets::skydome::SkydomeDescriptor;
 
-use hybrid_renderer::app::{AppContext, Application};
+use hybrid_renderer::app::{AppContext, Application, Loader};
 use hybrid_renderer::main_app;
 
 const CAMERA_DISTANCE: f32 = 5.0;
@@ -21,6 +21,8 @@ struct ModelViewerApp {}
 
 impl Application for ModelViewerApp {
     fn init(app_context: &mut AppContext<'_>) -> (Self, Stage) {
+        Loader::show();
+
         let size = app_context.window.inner_size();
         let camera = Camera::new(Vec3::new(0.0, 1., CAMERA_DISTANCE))
             .with_target(Vec3::ZERO)
@@ -51,6 +53,7 @@ impl Application for ModelViewerApp {
             },
             move |_, stage, skydome| {
                 stage.set_skydome(skydome);
+                Loader::hide();
             },
         );
 

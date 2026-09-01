@@ -2,6 +2,9 @@
 
 A real-time 3D rendering engine written in Rust on top of [wgpu](https://github.com/gfx-rs/wgpu). It blends a traditional forward geometry pipeline with GPU compute-driven lighting and environmental techniques, with plans to incorporate Signed Distance Fields (SDF) for shadows, ambient occlusion, and global illumination.
 
+> **[Launch WebGPU Model Viewer Demo](https://model-viewer.artuh92.workers.dev/)**  
+> *(Requires a WebGPU-compatible browser: Chrome 113+, Edge 113+, Safari 18+ on macOS/iOS, or Chrome 121+ on Android)*
+
 ## Features
 
 ### Core Capabilities
