@@ -1,5 +1,5 @@
 use crate::assets::assets_resources::{
-    AssetCallback, AssetData, CompletedAssetTask, ModelAssetData, SkydomeAssetData,
+    AssetCallback, AssetData, AssetResource, CompletedAssetTask, ModelAssetData, SkydomeAssetData,
     TextureAssetData,
 };
 use crate::assets::model::ModelAsset;
@@ -24,11 +24,92 @@ use crate::renderer::materials::{MaterialFactory, SkydomeMaterialDescriptor};
 use crate::stage::Stage;
 use crate::util::geometry_generator::MeshUtil;
 use gltf::material::AlphaMode as GltfAlphaMode;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::{HashMap, HashSet};
+use std::mem;
 use std::path::Path;
 use std::sync::Arc;
 
+use uuid::Uuid;
+
 use std::sync::mpsc::Sender;
+
+pub type SharedAssetLoadingGroup = Arc<RefCell<AssetLoadingGroup>>;
+
+pub enum GroupExecutionMode {
+    Parallel,
+    Sequential,
+}
+
+pub struct AssetLoadingGroup {
+    mode: GroupExecutionMode,
+    callbacks_uids: Vec<Uuid>,
+    callbacks_ready: HashSet<Uuid>,
+}
+
+impl AssetLoadingGroup {
+    pub fn create_parallel(render_env: &mut RenderingEnvironment) -> SharedAssetLoadingGroup {
+        let group = Arc::new(RefCell::new(AssetLoadingGroup {
+            mode: GroupExecutionMode::Parallel,
+            callbacks_uids: Vec::new(),
+            callbacks_ready: HashSet::new(),
+        }));
+
+        render_env
+            .asset_resources
+            .loading_groups
+            .push(Arc::clone(&group));
+
+        group
+    }
+
+    #[allow(dead_code)]
+    fn create_sequential_group() -> SharedAssetLoadingGroup {
+        todo!()
+    }
+
+    pub fn register_task(&mut self, callback_uid: Uuid) {
+        self.callbacks_uids.push(callback_uid);
+    }
+
+    pub fn contains_task(&self, callback_uid: &Uuid) -> bool {
+        self.callbacks_uids.contains(callback_uid)
+    }
+
+    pub fn mark_task_ready(&mut self, callback_uid: &Uuid) {
+        self.callbacks_ready.insert(*callback_uid);
+    }
+
+    pub fn get_tasks_to_execute(&mut self) -> Vec<Uuid> {
+        match self.mode {
+            GroupExecutionMode::Parallel => {
+                if self.is_ready() {
+                    mem::take(&mut self.callbacks_uids)
+                } else {
+                    Vec::new()
+                }
+            }
+            GroupExecutionMode::Sequential => todo!(),
+        }
+    }
+
+    pub fn is_disposed(&self) -> bool {
+        self.callbacks_uids.is_empty()
+    }
+
+    fn is_ready(&self) -> bool {
+        match self.mode {
+            GroupExecutionMode::Parallel => {
+                !self.callbacks_uids.is_empty()
+                    && self
+                        .callbacks_uids
+                        .iter()
+                        .all(|uid| self.callbacks_ready.contains(uid))
+            }
+            GroupExecutionMode::Sequential => todo!(),
+        }
+    }
+}
 
 pub struct AssetManager<'a> {
     pub render_env: &'a RenderingEnvironment<'a>,
@@ -46,11 +127,11 @@ impl<'a> AssetManager<'a> {
     }
 
     pub fn update(render_env: &mut RenderingEnvironment, stage: &mut Stage) {
-        let tasks: Vec<CompletedAssetTask> =
-            render_env.asset_resources.receiver.try_iter().collect();
+        let tasks = Self::process_loaded_asset(&mut render_env.asset_resources);
 
+        //let pending_tasks = std::mem::take(&mut render_env.asset_resources.pending_tasks);
         for task in tasks {
-            if let AssetData::Texture(texture_data) = task.data {
+            if let AssetData::Texture(texture_data) = &task.data {
                 let texture = TextureBuilder::new(
                     &render_env.render_context.device,
                     &render_env.render_context.queue,
@@ -88,6 +169,7 @@ impl<'a> AssetManager<'a> {
         path_or_url: impl AsRef<Path> + Send + 'static,
         descriptor: TextureDescriptor,
         on_loaded: F,
+        loading_group: Option<SharedAssetLoadingGroup>,
     ) where
         F: FnOnce(&mut RenderingEnvironment, &mut Stage, Texture) + Send + 'static,
     {
@@ -95,11 +177,18 @@ impl<'a> AssetManager<'a> {
         let sender = self.sender.clone();
         let callback = Box::new(on_loaded);
 
+        let uid = Uuid::new_v4();
+
+        if let Some(group) = &loading_group {
+            group.as_ref().borrow_mut().register_task(uid);
+        }
+
         Self::spawn_task(async move {
             if let Ok(bytes) = Self::fetch_bytes(&path).await {
                 let _ = sender.send(CompletedAssetTask {
                     data: AssetData::Texture(TextureAssetData { bytes, descriptor }),
                     callback: AssetCallback::Texture(callback),
+                    uid,
                 });
             } else {
                 #[cfg(debug_assertions)]
@@ -113,6 +202,7 @@ impl<'a> AssetManager<'a> {
         path_or_url: impl AsRef<Path> + Send + 'static,
         descriptor: SkydomeDescriptor,
         on_loaded: F,
+        loading_group: Option<SharedAssetLoadingGroup>,
     ) where
         F: FnOnce(&mut RenderingEnvironment, &mut Stage, Skydome) + Send + 'static,
     {
@@ -120,11 +210,18 @@ impl<'a> AssetManager<'a> {
         let sender = self.sender.clone();
         let callback = Box::new(on_loaded);
 
+        let uid = Uuid::new_v4();
+
+        if let Some(group) = &loading_group {
+            group.as_ref().borrow_mut().register_task(uid);
+        }
+
         Self::spawn_task(async move {
             if let Ok(bytes) = Self::fetch_bytes(&path).await {
                 let _ = sender.send(CompletedAssetTask {
                     data: AssetData::Skydome(SkydomeAssetData { bytes, descriptor }),
                     callback: AssetCallback::Skydome(callback),
+                    uid,
                 });
             } else {
                 #[cfg(debug_assertions)]
@@ -188,19 +285,30 @@ impl<'a> AssetManager<'a> {
         }
     }
 
-    pub fn load_model<F>(&self, path_or_url: impl AsRef<Path> + Send + 'static, on_loaded: F)
-    where
+    pub fn load_model<F>(
+        &self,
+        path_or_url: impl AsRef<Path> + Send + 'static,
+        on_loaded: F,
+        loading_group: Option<SharedAssetLoadingGroup>,
+    ) where
         F: FnOnce(&mut RenderingEnvironment, &mut Stage, ModelAsset) + Send + 'static,
     {
         let path = path_or_url.as_ref().to_string_lossy().to_string();
         let sender = self.sender.clone();
         let callback = Box::new(on_loaded);
 
+        let uid = Uuid::new_v4();
+
+        if let Some(group) = loading_group {
+            group.as_ref().borrow_mut().register_task(uid);
+        }
+
         Self::spawn_task(async move {
             if let Ok(bytes) = Self::fetch_bytes(&path).await {
                 let _ = sender.send(CompletedAssetTask {
                     data: AssetData::Model(ModelAssetData { bytes }),
                     callback: AssetCallback::Model(callback),
+                    uid,
                 });
             } else {
                 #[cfg(debug_assertions)]
@@ -245,6 +353,50 @@ impl<'a> AssetManager<'a> {
 
         println!("Loaded gltf asset: {}", asset_name);
         Ok(gltf_asset)
+    }
+
+    fn process_loaded_asset(asset_resource: &mut AssetResource) -> Vec<CompletedAssetTask> {
+        let tasks: Vec<CompletedAssetTask> = asset_resource.receiver.try_iter().collect();
+        asset_resource.pending_tasks.extend(tasks);
+
+        let mut tasks_to_execute_uids: Vec<Uuid> = Vec::new();
+        let mut tasks_out_of_groups: Vec<Uuid> = Vec::new();
+        asset_resource
+            .pending_tasks
+            .iter()
+            .for_each(|task| tasks_out_of_groups.push(task.uid));
+
+        for group_arc in asset_resource.loading_groups.iter() {
+            let mut group = group_arc.as_ref().borrow_mut();
+            for task in asset_resource.pending_tasks.iter() {
+                if group.contains_task(&task.uid) {
+                    group.mark_task_ready(&task.uid);
+                    tasks_to_execute_uids.extend(group.get_tasks_to_execute());
+                    tasks_out_of_groups.retain(|uid| *uid != task.uid);
+                }
+            }
+        }
+
+        let mut pending_map: HashMap<Uuid, CompletedAssetTask> =
+            std::mem::take(&mut asset_resource.pending_tasks)
+                .into_iter()
+                .map(|task| (task.uid, task))
+                .collect();
+
+        tasks_to_execute_uids.extend(tasks_out_of_groups);
+
+        let mut result_tasks: Vec<CompletedAssetTask> = Vec::new();
+        for uid in &tasks_to_execute_uids {
+            if let Some(task) = pending_map.remove(uid) {
+                result_tasks.push(task);
+            }
+        }
+
+        asset_resource.pending_tasks = pending_map.into_values().collect();
+        asset_resource
+            .loading_groups
+            .retain(|g| !g.borrow().is_disposed());
+        result_tasks
     }
 
     fn load_node(

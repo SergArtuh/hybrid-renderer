@@ -55,6 +55,7 @@ impl Application for ModelViewerApp {
                 stage.set_skydome(skydome);
                 Loader::hide();
             },
+            None,
         );
 
         AssetManager::new(&app_context.render_env).load_model(
@@ -73,6 +74,7 @@ impl Application for ModelViewerApp {
                     stage.add_model(model);
                 }
             },
+            None,
         );
 
         (Self {}, stage)

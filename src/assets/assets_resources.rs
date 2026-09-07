@@ -1,7 +1,13 @@
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{
+    Arc,
+    mpsc::{Receiver, Sender, channel},
+};
+
+use uuid::Uuid;
 
 use crate::{
     assets::{
+        asset_manager::AssetLoadingGroup,
         model::ModelAsset,
         skydome::{Skydome, SkydomeDescriptor},
     },
@@ -54,6 +60,7 @@ pub enum AssetCallback {
 }
 
 pub struct CompletedAssetTask {
+    pub uid: Uuid,
     pub data: AssetData,
     pub callback: AssetCallback,
 }
@@ -61,12 +68,18 @@ pub struct CompletedAssetTask {
 pub struct AssetResource {
     pub(crate) sender: Sender<CompletedAssetTask>,
     pub(crate) receiver: Receiver<CompletedAssetTask>,
+    pub(crate) pending_tasks: Vec<CompletedAssetTask>,
+    pub(crate) loading_groups: Vec<Arc<std::cell::RefCell<AssetLoadingGroup>>>,
 }
 
 impl AssetResource {
-    #[warn(clippy::new_without_default)]
     pub fn new() -> Self {
         let (sender, receiver) = channel();
-        Self { sender, receiver }
+        Self {
+            sender,
+            receiver,
+            pending_tasks: Vec::new(),
+            loading_groups: Vec::new(),
+        }
     }
 }
