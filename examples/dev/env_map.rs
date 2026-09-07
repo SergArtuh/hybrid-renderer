@@ -115,6 +115,7 @@ const VERTICES: &[Vertex] = &[
 
 const INDICES: &[u16] = &[0, 1, 2, 0, 2, 3];
 
+#[cfg(not(target_arch = "wasm32"))]
 fn create_render_pass<'a>(
     encoder: &'a mut wgpu::CommandEncoder,
     view: &'a wgpu::TextureView,
@@ -133,14 +134,16 @@ fn create_render_pass<'a>(
                 }),
                 store: wgpu::StoreOp::Store,
             },
+            depth_slice: None,
         })],
         depth_stencil_attachment: None,
         occlusion_query_set: None,
         timestamp_writes: None,
+        multiview_mask: None,
     });
     render_pass
 }
-
+#[cfg(not(target_arch = "wasm32"))]
 pub fn run() {
     let event_loop = EventLoop::new().unwrap();
     let window = Arc::new(
@@ -152,7 +155,10 @@ pub fn run() {
 
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: wgpu::Backends::all(),
-        ..Default::default()
+        flags: wgpu::InstanceFlags::advanced_debugging(),
+        memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
+        backend_options: wgpu::BackendOptions::default(),
+        display: None,
     });
 
     let surface = instance.create_surface(window.clone()).unwrap();
@@ -161,14 +167,15 @@ pub fn run() {
         power_preference: wgpu::PowerPreference::HighPerformance,
         compatible_surface: Some(&surface),
         force_fallback_adapter: false,
+        apply_limit_buckets: true,
     }))
     .unwrap();
 
     let surface_caps = surface.get_capabilities(&adapter);
     println!("{:#?}", surface_caps);
 
-    let ray_query = adapter.features().contains(wgpu::Features::RAY_QUERY);
-    println!("Ray query: {}", ray_query);
+    // let ray_query = adapter.features().contains(wgpu::Features::QUERY);
+    // println!("Ray query: {}", ray_query);
 
     let info = adapter.get_info();
     println!(
@@ -176,19 +183,17 @@ pub fn run() {
         info.name, info.backend
     );
 
-    let (device, queue) = pollster::block_on(adapter.request_device(
-        &wgpu::DeviceDescriptor {
-            label: Some("My Primary Device"),
-
-            required_features: wgpu::Features::POLYGON_MODE_LINE,
-
-            required_limits: wgpu::Limits {
-                max_bind_groups: 4,
-                ..wgpu::Limits::default()
-            },
+    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+        label: Some("Primary Device"),
+        required_features: wgpu::Features::POLYGON_MODE_LINE,
+        required_limits: wgpu::Limits {
+            max_bind_groups: 4,
+            ..wgpu::Limits::default()
         },
-        None,
-    ))
+        experimental_features: wgpu::ExperimentalFeatures::default(),
+        memory_hints: wgpu::MemoryHints::default(),
+        trace: wgpu::Trace::Off,
+    }))
     .unwrap();
 
     let size = window.inner_size();
@@ -206,10 +211,11 @@ pub fn run() {
         format: surface_format,
         width: size.width,
         height: size.height,
-        present_mode: surface_caps.present_modes[0],
+        present_mode: wgpu::PresentMode::Mailbox,
         alpha_mode: surface_caps.alpha_modes[0],
         view_formats: vec![],
         desired_maximum_frame_latency: 2,
+        color_space: wgpu::SurfaceColorSpace::Auto,
     };
 
     surface.configure(&device, &config);
@@ -291,7 +297,7 @@ pub fn run() {
             address_mode_w: wgpu::AddressMode::Repeat,
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             ..Default::default()
         });
 
@@ -387,20 +393,26 @@ pub fn run() {
                 window_id,
             } if window_id == window.id() => {
                 let output = match render_context.surface.get_current_texture() {
-                    Ok(output) => output,
-                    Err(wgpu::SurfaceError::Lost) => {
-                        render_context
-                            .surface
-                            .configure(&render_context.device, &render_context.config);
-                        return;
+                    wgpu::CurrentSurfaceTexture::Success(texture) => texture,
+                    wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
+                    wgpu::CurrentSurfaceTexture::Timeout => {
+                        eprintln!("Timeout acquired surface texture");
+                        panic!("Timeout acquired surface texture");
                     }
-                    Err(wgpu::SurfaceError::OutOfMemory) => {
-                        elwt.exit();
-                        return;
+                    wgpu::CurrentSurfaceTexture::Outdated => {
+                        eprintln!("Surface is outdated");
+                        panic!("Surface is outdated");
                     }
-                    Err(e) => {
-                        eprintln!("{:?}", e);
-                        return;
+                    wgpu::CurrentSurfaceTexture::Lost => {
+                        eprintln!("Surface is lost");
+                        panic!("Surface is lost");
+                    }
+                    wgpu::CurrentSurfaceTexture::Validation => {
+                        eprintln!("Surface texture validation failed");
+                        panic!("Surface texture validation failed");
+                    }
+                    other => {
+                        panic!("Failed to get current texture: {:?}", other);
                     }
                 };
 
@@ -429,7 +441,8 @@ pub fn run() {
                     .queue
                     .submit(std::iter::once(encoder.finish()));
 
-                output.present();
+                render_context.queue.present(output);
+                //output.present();
             }
             Event::AboutToWait => {
                 window.request_redraw();
@@ -439,7 +452,17 @@ pub fn run() {
         .unwrap();
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn main() {
     env_logger::init();
     run();
 }
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen(start)]
+pub fn start() {
+    web_sys::console::log_1(&"Not supported on wasm".into());
+}
+
+#[cfg(target_arch = "wasm32")]
+fn main() {}

@@ -44,7 +44,7 @@ impl Application for SpriteAnimationApp {
             move |render_env, stage, texture| {
                 // console::log_1(&format!("Bytes loaded: {}", bytes.len()).into());
                 let sprite_material =
-                    MaterialFactory::new(&render_env).create_material(SpriteMaterialDescriptor {
+                    MaterialFactory::new(render_env).create_material(SpriteMaterialDescriptor {
                         texture: Arc::new(texture),
                         grid_size: (8, 8),
                     });
@@ -59,6 +59,7 @@ impl Application for SpriteAnimationApp {
                 let model = Model::new(model_node.clone(), glam::Mat4::IDENTITY);
                 stage.add_model(model);
             },
+            None,
         );
 
         AssetManager::new(&app_context.render_env).load_skydome(
@@ -70,6 +71,7 @@ impl Application for SpriteAnimationApp {
             move |_, stage, skydome| {
                 stage.set_skydome(skydome);
             },
+            None,
         );
 
         (
@@ -92,12 +94,11 @@ impl Application for SpriteAnimationApp {
 
         // TODO: models add unique_id
         for model in stage.models.iter() {
-            if let Some(model_node) = model.find_node_by_name(SPRITE_NODE_NAME) {
-                if let Some(material) = &model_node.material {
-                    if let Material::Sprite(sprite) = material.as_ref() {
-                        sprite.set_frame(self.frame_count, &ctx.render_env.render_context.queue);
-                    }
-                }
+            if let Some(model_node) = model.find_node_by_name(SPRITE_NODE_NAME)
+                && let Some(material) = &model_node.material
+                && let Material::Sprite(sprite) = material.as_ref()
+            {
+                sprite.set_frame(self.frame_count, &ctx.render_env.render_context.queue);
             }
         }
     }
