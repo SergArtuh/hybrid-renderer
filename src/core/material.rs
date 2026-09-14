@@ -5,18 +5,16 @@ pub enum MaterialType {
     Sprite,
     Physical,
     Skydome,
-}
 
-pub enum MaterialDomain {
-    Surface,
-    PostProcess,
-    Environment,
+    // TODO: move to separate pass module
+    PrePass,
 }
 
 pub enum Material {
     Sprite(SpriteMaterial),
     Physical(PhysicalMaterial),
     Skydome(SkydomeEnvironmentMaterial),
+    PrePass(PrePassMaterial),
 }
 
 impl Material {
@@ -25,6 +23,7 @@ impl Material {
             Material::Sprite(_) => MaterialType::Sprite,
             Material::Physical(_) => MaterialType::Physical,
             Material::Skydome(_) => MaterialType::Skydome,
+            Material::PrePass(_) => MaterialType::PrePass,
         }
     }
     pub fn bind_group(&self) -> &wgpu::BindGroup {
@@ -32,6 +31,9 @@ impl Material {
             Material::Sprite(sprite_material) => &sprite_material.bind_group,
             Material::Physical(physical_material) => &physical_material.bind_group,
             Material::Skydome(skydome_material) => &skydome_material.bind_group,
+            Material::PrePass(_) => {
+                unreachable!("PrePassMaterial is service material that cannot be used directly")
+            }
         }
     }
     pub fn alpha_mode(&self) -> AlphaMode {
@@ -39,6 +41,7 @@ impl Material {
             Material::Sprite(_) => AlphaMode::Opaque,
             Material::Physical(physical_material) => physical_material.alpha_mode,
             Material::Skydome(_) => AlphaMode::Opaque,
+            Material::PrePass(_) => AlphaMode::Opaque,
         }
     }
 }
@@ -67,7 +70,7 @@ pub trait MaterialTrait: Sized {
     type Descriptor;
     type Definition;
     const TYPE: MaterialType;
-    const DOMAIN: MaterialDomain;
+    //const DOMAIN: MaterialDomain;
     const LAYOUT: &'static [Option<wgpu::VertexBufferLayout<'static>>];
 
     fn get_shader_path() -> &'static str;
@@ -139,3 +142,5 @@ pub struct SkydomeEnvironmentMaterial {
     pub uniform_buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
 }
+
+pub struct PrePassMaterial {}

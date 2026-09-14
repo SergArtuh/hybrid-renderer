@@ -2,20 +2,20 @@ pub mod pbr_material;
 pub mod skydome_material;
 pub mod sprite_material;
 
+#[path = "helper/prepass.rs"]
+mod prepass;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
-pub use pbr_material::Definition as PbrMaterialDefinition;
 pub use pbr_material::Descriptor as PhysicalMaterialDescriptor;
-
-pub use skydome_material::Definition as SkydomeMaterialDefinition;
+pub use prepass::Descriptor as PrepassDescriptor;
 pub use skydome_material::Descriptor as SkydomeMaterialDescriptor;
-
-pub use sprite_material::Definition as SpriteMaterialDefinition;
 pub use sprite_material::Descriptor as SpriteMaterialDescriptor;
 
 use crate::core::material::AlphaMode;
 use crate::core::material::PipelineKey;
+use crate::core::material::PrePassMaterial;
 use crate::core::material::SkydomeEnvironmentMaterial;
 use crate::core::material::SpriteMaterial;
 use crate::core::material::{Material, MaterialTrait, PhysicalMaterial};
@@ -37,7 +37,12 @@ pub fn initialize_materials(render_env: &mut RenderingEnvironment) {
         };
     }
 
-    register![PhysicalMaterial, SkydomeEnvironmentMaterial, SpriteMaterial];
+    register![
+        PhysicalMaterial,
+        SkydomeEnvironmentMaterial,
+        SpriteMaterial,
+        PrePassMaterial
+    ];
 }
 
 const DEFAULT_DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;

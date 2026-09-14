@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     core::{
         compute_task::{ComputeTaskTrait, ComputeTaskType},
-        material::{Material, MaterialTrait, PipelineKey},
+        material::{MaterialTrait, MaterialType, PipelineKey},
     },
     renderer::{
         RenderingEnvironment,
@@ -127,20 +127,20 @@ impl PipelineSystem {
 
     pub fn get_default_pipeline<'a>(
         render_env: &'a RenderingEnvironment,
-        material: &Material,
+        material_type: MaterialType,
     ) -> Option<&'a wgpu::RenderPipeline> {
-        Self::get_pipeline(render_env, material, PipelineKey::default())
+        Self::get_pipeline(render_env, material_type, PipelineKey::default())
     }
 
     pub fn get_pipeline<'a>(
         render_env: &'a RenderingEnvironment,
-        material: &Material,
+        material_type: MaterialType,
         key: PipelineKey,
     ) -> Option<&'a wgpu::RenderPipeline> {
         render_env
             .pipeline_resources
             .render_pipelines
-            .get(&(material.kind(), key))
+            .get(&(material_type, key))
     }
 
     pub fn get_compute_pipeline<'a>(

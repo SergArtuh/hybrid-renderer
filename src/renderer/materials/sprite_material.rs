@@ -5,10 +5,7 @@ use wgpu::util::DeviceExt;
 
 use crate::{
     core::{
-        material::{
-            MaterialDomain, MaterialTrait, MaterialType, PipelineKey, SpriteMaterial,
-            SpriteSheetUniform,
-        },
+        material::{MaterialTrait, MaterialType, PipelineKey, SpriteMaterial, SpriteSheetUniform},
         texture::Texture,
         vertex::Vertex,
     },
@@ -29,7 +26,7 @@ pub struct Descriptor {
 impl MaterialTrait for SpriteMaterial {
     type Descriptor = Descriptor;
     type Definition = Definition;
-    const DOMAIN: MaterialDomain = MaterialDomain::Surface;
+    //const DOMAIN: MaterialDomain = MaterialDomain::Surface;
     const TYPE: MaterialType = MaterialType::Sprite;
     const LAYOUT: &'static [Option<wgpu::VertexBufferLayout<'static>>] = &[Some(Vertex::LAYOUT)];
 

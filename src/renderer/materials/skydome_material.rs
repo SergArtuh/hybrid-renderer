@@ -6,8 +6,7 @@ use wgpu::util::DeviceExt;
 use crate::{
     core::{
         material::{
-            EnvironmentMap, MaterialDomain, MaterialTrait, MaterialType, PipelineKey,
-            SkydomeEnvironmentMaterial,
+            EnvironmentMap, MaterialTrait, MaterialType, PipelineKey, SkydomeEnvironmentMaterial,
         },
         texture::Texture,
         uniforms::SkydomeUniform,
@@ -33,7 +32,7 @@ pub struct Descriptor {
 impl MaterialTrait for SkydomeEnvironmentMaterial {
     type Descriptor = Descriptor;
     type Definition = Definition;
-    const DOMAIN: MaterialDomain = MaterialDomain::Environment;
+    //const DOMAIN: MaterialDomain = MaterialDomain::Environment;
     const TYPE: MaterialType = MaterialType::Skydome;
     const LAYOUT: &'static [Option<wgpu::VertexBufferLayout<'static>>] = &[Some(Vertex::LAYOUT)];
 
