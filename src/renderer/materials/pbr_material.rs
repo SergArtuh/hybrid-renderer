@@ -381,7 +381,7 @@ impl MaterialDefinitionTrait<PhysicalMaterial> for Definition {
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: DEFAULT_DEPTH_FORMAT,
                     depth_write_enabled: Some(true),
-                    depth_compare: Some(wgpu::CompareFunction::Less),
+                    depth_compare: Some(wgpu::CompareFunction::LessEqual),
                     stencil: wgpu::StencilState::default(),
                     bias: wgpu::DepthBiasState::default(),
                 }),

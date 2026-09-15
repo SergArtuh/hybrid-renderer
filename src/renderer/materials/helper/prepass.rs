@@ -110,7 +110,7 @@ impl MaterialDefinitionTrait<PrePassMaterial> for Definition {
 
         let pipeline = render_env.render_context.device.create_render_pipeline(
             &wgpu::RenderPipelineDescriptor {
-                label: Some("Opaque Pbr Material Pipeline"),
+                label: Some("Prepass pipeline"),
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
                     module: &shader_module,
@@ -129,7 +129,7 @@ impl MaterialDefinitionTrait<PrePassMaterial> for Definition {
                     module: &shader_module,
                     entry_point: Some("fs_main"),
                     targets: &[Some(wgpu::ColorTargetState {
-                        format: render_env.render_context.config.format,
+                        format: wgpu::TextureFormat::Rgba16Float,
                         blend: Some(wgpu::BlendState::REPLACE),
                         write_mask: wgpu::ColorWrites::ALL,
                     })],

@@ -7,13 +7,15 @@ use crate::{
         uniforms::{CameraUniform, ModelUniform},
     },
     renderer::{
-        passes::forward::ForwardPass, pipeline_resources::PipelineResources,
+        passes::{forward::ForwardPass, prepass::PrePass},
+        pipeline_resources::PipelineResources,
         pipeline_system::PipelineSystem,
     },
     stage::frame_data::RenderItem,
 };
 
 pub struct RenderResources {
+    pub prepass: PrePass,
     pub forward_pass: ForwardPass,
     pub global_resources: GlobalResources,
     pub model_resources: ModelResources,
@@ -63,9 +65,11 @@ impl RenderResources {
         let model_resources = ModelResources::new(render_context, &pipeline_resources.model);
         let depth_texture_view = Self::create_depth_texture(render_context);
 
+        let prepass = PrePass::new();
         let forward_pass = ForwardPass::default();
 
         Self {
+            prepass,
             forward_pass,
             global_resources,
             model_resources,

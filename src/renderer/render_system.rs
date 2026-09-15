@@ -13,14 +13,21 @@ impl<'a> RendererSystem {
         let mut frame_target = Self::begin_frame(rendering_env, frame_data);
 
         {
-            let mut render_pass = Self::create_render_pass(
+            // let mut render_pass = Self::create_render_pass(
+            //     rendering_env,
+            //     &mut frame_target.encoder,
+            //     &frame_target.view,
+            // );
+
+            rendering_env.render_resources.prepass.execute(
+                &mut frame_target,
                 rendering_env,
-                &mut frame_target.encoder,
-                &frame_target.view,
+                frame_data,
             );
 
             rendering_env.render_resources.forward_pass.execute(
-                &mut render_pass,
+                &mut frame_target,
+                //&mut render_pass,
                 rendering_env,
                 frame_data,
             );
@@ -61,6 +68,28 @@ impl<'a> RendererSystem {
         let view = surface_texture
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let texture_size = surface_texture.texture.size();
+
+        let normal_texture = render_context
+            .device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("Normal Render Texture"),
+                size: wgpu::Extent3d {
+                    width: texture_size.width,
+                    height: texture_size.height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba16Float,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            });
+
+        let normal_view = normal_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         let encoder =
             render_context
@@ -113,6 +142,8 @@ impl<'a> RendererSystem {
         FrameTarget {
             surface_texture,
             view,
+            normal_texture,
+            normal_view,
             encoder,
         }
     }
@@ -123,41 +154,5 @@ impl<'a> RendererSystem {
             .submit(std::iter::once(target.encoder.finish()));
         //render_context.device.poll(wgpu::Maintain::Wait);
         render_context.queue.present(target.surface_texture);
-    }
-
-    fn create_render_pass(
-        rendering_environment: &'a RenderingEnvironment,
-        encoder: &'a mut wgpu::CommandEncoder,
-        view: &'a wgpu::TextureView,
-    ) -> wgpu::RenderPass<'a> {
-        let render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Render Pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: view,
-                resolve_target: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.1,
-                        g: 0.2,
-                        b: 0.3,
-                        a: 1.0,
-                    }),
-                    store: wgpu::StoreOp::Store,
-                },
-                depth_slice: None,
-            })],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &rendering_environment.render_resources.depth_texture_view,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
-                    store: wgpu::StoreOp::Store,
-                }),
-                stencil_ops: None,
-            }),
-            occlusion_query_set: None,
-            timestamp_writes: None,
-            multiview_mask: None,
-        });
-        render_pass
     }
 }
