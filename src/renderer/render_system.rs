@@ -13,12 +13,6 @@ impl<'a> RendererSystem {
         let mut frame_target = Self::begin_frame(rendering_env, frame_data);
 
         {
-            // let mut render_pass = Self::create_render_pass(
-            //     rendering_env,
-            //     &mut frame_target.encoder,
-            //     &frame_target.view,
-            // );
-
             rendering_env.render_resources.prepass.execute(
                 &mut frame_target,
                 rendering_env,
@@ -27,7 +21,12 @@ impl<'a> RendererSystem {
 
             rendering_env.render_resources.forward_pass.execute(
                 &mut frame_target,
-                //&mut render_pass,
+                rendering_env,
+                frame_data,
+            );
+
+            rendering_env.render_resources.postprocess_pass.execute(
+                &mut frame_target,
                 rendering_env,
                 frame_data,
             );
@@ -69,27 +68,12 @@ impl<'a> RendererSystem {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let texture_size = surface_texture.texture.size();
+        //let texture_size = surface_texture.texture.size();
 
-        let normal_texture = render_context
-            .device
-            .create_texture(&wgpu::TextureDescriptor {
-                label: Some("Normal Render Texture"),
-                size: wgpu::Extent3d {
-                    width: texture_size.width,
-                    height: texture_size.height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba16Float,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
-            });
-
-        let normal_view = normal_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let normal_buffer_view = rendering_environment
+            .render_resources
+            .normal_buffer_view
+            .clone();
 
         let encoder =
             render_context
@@ -142,8 +126,7 @@ impl<'a> RendererSystem {
         FrameTarget {
             surface_texture,
             view,
-            normal_texture,
-            normal_view,
+            normal_buffer_view,
             encoder,
         }
     }

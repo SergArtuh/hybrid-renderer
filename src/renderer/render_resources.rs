@@ -1,25 +1,31 @@
-use std::sync::Arc;
+use std::{cell::RefCell, sync::Arc};
 
 use crate::{
     core::{
+        material::Material,
+        mesh::Mesh,
         render_context::RenderContext,
         texture::DefaultTextures,
         uniforms::{CameraUniform, ModelUniform},
     },
     renderer::{
-        passes::{forward::ForwardPass, prepass::PrePass},
+        passes::{forward::ForwardPass, postprocess::PostProcessPass, prepass::PrePass},
         pipeline_resources::PipelineResources,
         pipeline_system::PipelineSystem,
     },
     stage::frame_data::RenderItem,
+    util::geometry_generator::MeshUtil,
 };
 
 pub struct RenderResources {
     pub prepass: PrePass,
     pub forward_pass: ForwardPass,
+    pub postprocess_pass: PostProcessPass,
     pub global_resources: GlobalResources,
     pub model_resources: ModelResources,
+    pub postprocess_resources: PostProcessResources,
     pub depth_texture_view: wgpu::TextureView,
+    pub normal_buffer_view: wgpu::TextureView,
     pub default_textures: DefaultTextures,
     pub common_sampler: wgpu::Sampler,
     pub common_nearest_sampler: wgpu::Sampler,
@@ -64,24 +70,32 @@ impl RenderResources {
         );
         let model_resources = ModelResources::new(render_context, &pipeline_resources.model);
         let depth_texture_view = Self::create_depth_texture(render_context);
+        let normal_buffer_view = Self::create_normal_buffer(render_context);
 
         let prepass = PrePass::new();
         let forward_pass = ForwardPass::default();
 
+        let postprocess_resources = PostProcessResources::new(render_context);
+        let postprocess_pass = PostProcessPass::new();
+
         Self {
             prepass,
             forward_pass,
+            postprocess_pass,
             global_resources,
             model_resources,
             depth_texture_view,
+            normal_buffer_view,
             default_textures,
             common_sampler,
             common_nearest_sampler,
+            postprocess_resources,
         }
     }
 
     pub fn resize(&mut self, render_context: &RenderContext) {
         self.depth_texture_view = Self::create_depth_texture(render_context);
+        self.normal_buffer_view = Self::create_normal_buffer(render_context);
     }
 
     fn create_depth_texture(render_context: &RenderContext) -> wgpu::TextureView {
@@ -97,6 +111,29 @@ impl RenderResources {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: PipelineSystem::DEPTH_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        };
+        let texture = render_context.device.create_texture(&desc);
+        texture.create_view(&wgpu::TextureViewDescriptor::default())
+    }
+
+    fn create_normal_buffer(render_context: &RenderContext) -> wgpu::TextureView {
+        println!("Creating normal buffer");
+
+        let size = wgpu::Extent3d {
+            width: render_context.config.width,
+            height: render_context.config.height,
+            depth_or_array_layers: 1,
+        };
+
+        let desc = wgpu::TextureDescriptor {
+            label: Some("Normal Buffer"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         };
@@ -343,5 +380,28 @@ impl ModelResources {
             model_matrix,
             normal_matrix,
         }
+    }
+}
+
+pub struct PostProcessResources {
+    pub mesh: Arc<Mesh>, // full screen quad
+    pub material: RefCell<Option<Arc<Material>>>,
+}
+
+impl PostProcessResources {
+    pub fn new(render_context: &RenderContext) -> Self {
+        let mesh = Arc::new(Mesh::from_data(
+            &render_context.device,
+            &MeshUtil::new_procedural_quad(),
+        ));
+
+        Self {
+            mesh,
+            material: RefCell::new(None),
+        }
+    }
+
+    pub fn initialize_material(&self, material: Arc<Material>) {
+        *self.material.borrow_mut() = Some(material);
     }
 }

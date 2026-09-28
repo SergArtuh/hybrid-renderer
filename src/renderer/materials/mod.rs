@@ -5,16 +5,21 @@ pub mod sprite_material;
 #[path = "helper/prepass.rs"]
 mod prepass;
 
+#[path = "helper/postprocess.rs"]
+mod postprocess;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
 pub use pbr_material::Descriptor as PhysicalMaterialDescriptor;
+pub use postprocess::Descriptor as PostProcessMaterialDescriptor;
 pub use prepass::Descriptor as PrepassDescriptor;
 pub use skydome_material::Descriptor as SkydomeMaterialDescriptor;
 pub use sprite_material::Descriptor as SpriteMaterialDescriptor;
 
 use crate::core::material::AlphaMode;
 use crate::core::material::PipelineKey;
+use crate::core::material::PostProcessMaterial;
 use crate::core::material::PrePassMaterial;
 use crate::core::material::SkydomeEnvironmentMaterial;
 use crate::core::material::SpriteMaterial;
@@ -41,7 +46,8 @@ pub fn initialize_materials(render_env: &mut RenderingEnvironment) {
         PhysicalMaterial,
         SkydomeEnvironmentMaterial,
         SpriteMaterial,
-        PrePassMaterial
+        PrePassMaterial,
+        PostProcessMaterial
     ];
 }
 

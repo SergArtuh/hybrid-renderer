@@ -24,7 +24,7 @@ impl PrePass {
         let mut rpass = Self::create_render_pass(
             render_env,
             &mut frame_target.encoder,
-            &frame_target.normal_view,
+            &frame_target.normal_buffer_view,
         );
 
         let stride = render_env.render_resources.model_resources.stride as DynamicOffset;

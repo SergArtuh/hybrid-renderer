@@ -1,11 +1,18 @@
+use std::sync::Arc;
+
 #[cfg(all(feature = "shader-hot-reload", not(target_arch = "wasm32")))]
 use crate::util::shader_watcher::ShaderWatcherResources;
 use crate::{
     assets::assets_resources::AssetResource,
-    core::render_context::RenderContext,
+    core::{
+        material::{Material, PostProcessMaterial},
+        render_context::RenderContext,
+    },
     renderer::{
-        compute_task::initialize_compute_tasks, materials::initialize_materials,
-        pipeline_resources::PipelineResources, render_resources::RenderResources,
+        compute_task::initialize_compute_tasks,
+        materials::{MaterialFactory, PostProcessMaterialDescriptor, initialize_materials},
+        pipeline_resources::PipelineResources,
+        render_resources::RenderResources,
     },
 };
 
@@ -54,6 +61,7 @@ impl<'a> RenderingEnvironment<'a> {
         let mut env = Self::new(render_context);
         initialize_materials(&mut env);
         initialize_compute_tasks(&mut env);
+        env.update_postprocess_material();
         env
     }
 
@@ -63,5 +71,23 @@ impl<'a> RenderingEnvironment<'a> {
         }
         self.render_context.resize(width, height);
         self.render_resources.resize(&self.render_context);
+        self.update_postprocess_material();
+    }
+
+    fn update_postprocess_material(&mut self) {
+        let normal_buffer_view = self.render_resources.normal_buffer_view.clone();
+        let depth_buffer_view = self.render_resources.depth_texture_view.clone();
+        let mat = Arc::new(Material::PostProcess(
+            MaterialFactory::new(self).create_material::<PostProcessMaterial>(
+                PostProcessMaterialDescriptor {
+                    normal_buffer_view,
+                    depth_buffer_view,
+                },
+            ),
+        ));
+
+        self.render_resources
+            .postprocess_resources
+            .initialize_material(mat);
     }
 }

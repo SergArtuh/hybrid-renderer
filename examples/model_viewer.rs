@@ -45,8 +45,8 @@ impl Application for ModelViewerApp {
         stage.set_camera_controller(CameraController::Orbit(camera_controller));
 
         AssetManager::new(&app_context.render_env).load_skydome(
-            //"assets/zwartkops_curve_sunset_4k.exr",
-            "https://pub-227d210eb508481688aaf1983484a58a.r2.dev/zwartkops_curve_sunset_4k.exr",
+            "assets/zwartkops_curve_sunset_4k.exr",
+            //"https://pub-227d210eb508481688aaf1983484a58a.r2.dev/zwartkops_curve_sunset_4k.exr",
             SkydomeDescriptor {
                 radius: 150.0,
                 factor: 0.95,
@@ -59,8 +59,8 @@ impl Application for ModelViewerApp {
         );
 
         AssetManager::new(&app_context.render_env).load_model(
-            //"assets/models/porsche.glb",
-            "https://pub-227d210eb508481688aaf1983484a58a.r2.dev/porsche.glb",
+            "assets/models/porsche.glb",
+            //"https://pub-227d210eb508481688aaf1983484a58a.r2.dev/porsche.glb",
             move |_, stage, asset_models| {
                 for model_node in &asset_models.scene_roots {
                     let mut model = Model::new(Arc::clone(model_node), glam::Mat4::IDENTITY);

@@ -8,6 +8,7 @@ pub enum MaterialType {
 
     // TODO: move to separate pass module
     PrePass,
+    PostProcess,
 }
 
 pub enum Material {
@@ -15,6 +16,7 @@ pub enum Material {
     Physical(PhysicalMaterial),
     Skydome(SkydomeEnvironmentMaterial),
     PrePass(PrePassMaterial),
+    PostProcess(PostProcessMaterial),
 }
 
 impl Material {
@@ -24,6 +26,7 @@ impl Material {
             Material::Physical(_) => MaterialType::Physical,
             Material::Skydome(_) => MaterialType::Skydome,
             Material::PrePass(_) => MaterialType::PrePass,
+            Material::PostProcess(_) => MaterialType::PostProcess,
         }
     }
     pub fn bind_group(&self) -> &wgpu::BindGroup {
@@ -34,6 +37,7 @@ impl Material {
             Material::PrePass(_) => {
                 unreachable!("PrePassMaterial is service material that cannot be used directly")
             }
+            Material::PostProcess(post_process_material) => &post_process_material.bind_group,
         }
     }
     pub fn alpha_mode(&self) -> AlphaMode {
@@ -42,6 +46,7 @@ impl Material {
             Material::Physical(physical_material) => physical_material.alpha_mode,
             Material::Skydome(_) => AlphaMode::Opaque,
             Material::PrePass(_) => AlphaMode::Opaque,
+            Material::PostProcess(_) => AlphaMode::Opaque,
         }
     }
 }
@@ -144,3 +149,7 @@ pub struct SkydomeEnvironmentMaterial {
 }
 
 pub struct PrePassMaterial {}
+
+pub struct PostProcessMaterial {
+    pub bind_group: wgpu::BindGroup,
+}
