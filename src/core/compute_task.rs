@@ -7,6 +7,7 @@ pub enum ComputeTaskType {
     DiffuseIrradiance,
     SpecularPrefilter,
     MipmapGenerator,
+    SdfIllumination,
 }
 
 pub struct ComputeTaskInstance {

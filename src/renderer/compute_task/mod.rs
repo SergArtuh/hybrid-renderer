@@ -29,6 +29,11 @@ pub use mipmap_generator::Provider as MipmapGeneratorProvider;
 pub use mipmap_generator::Task as MipmapGeneratorTask;
 pub use mipmap_generator::TaskDescriptor as MipmapGeneratorTaskDescriptor;
 
+pub mod sdf_illumination;
+pub use sdf_illumination::Provider as SDFIlluminationProvider;
+pub use sdf_illumination::Task as SDFIlluminationTask;
+pub use sdf_illumination::TaskDescriptor as SDFIlluminationTaskDescriptor;
+
 pub fn initialize_compute_tasks(render_env: &mut RenderingEnvironment) {
     render_env.pipeline_resources.base_compute_shaders_path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -51,7 +56,8 @@ pub fn initialize_compute_tasks(render_env: &mut RenderingEnvironment) {
         ClearCubemapTask,
         DiffuseIrradianceTask,
         MipmapGeneratorTask,
-        SpecularPrefilterTask
+        SpecularPrefilterTask,
+        SDFIlluminationTask
     ];
 }
 

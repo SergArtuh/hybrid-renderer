@@ -76,11 +76,13 @@ impl<'a> RenderingEnvironment<'a> {
 
     fn update_postprocess_material(&mut self) {
         let normal_buffer_view = self.render_resources.normal_buffer_view.clone();
+        let sdf_ao_buffer_view = self.render_resources.sdf_ao_buffer_view.clone();
         let depth_buffer_view = self.render_resources.depth_texture_view.clone();
         let mat = Arc::new(Material::PostProcess(
             MaterialFactory::new(self).create_material::<PostProcessMaterial>(
                 PostProcessMaterialDescriptor {
-                    normal_buffer_view,
+                    //normal_buffer_view,
+                    normal_buffer_view: sdf_ao_buffer_view,
                     depth_buffer_view,
                 },
             ),

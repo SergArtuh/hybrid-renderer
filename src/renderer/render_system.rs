@@ -19,6 +19,12 @@ impl<'a> RendererSystem {
                 frame_data,
             );
 
+            rendering_env.render_resources.sdf_pass.execute(
+                &mut frame_target,
+                rendering_env,
+                frame_data,
+            );
+
             rendering_env.render_resources.forward_pass.execute(
                 &mut frame_target,
                 rendering_env,
@@ -89,21 +95,19 @@ impl<'a> RendererSystem {
             .global_resources
             .update_camera_uniform_buffer(render_context, &frame_data.camera_uniform);
 
-        frame_data
-            .get_environment_texture()
-            .map(|environment_texture| {
-                rendering_environment
-                    .render_resources
-                    .global_resources
-                    .update_skybox_texture(
-                        render_context,
-                        &rendering_environment.pipeline_resources.global,
-                        Arc::clone(&environment_texture.skybox),
-                        Arc::clone(&environment_texture.irradiance),
-                        Arc::clone(&environment_texture.specular),
-                        &rendering_environment.render_resources.common_sampler,
-                    )
-            });
+        if let Some(environment_texture) = frame_data.get_environment_texture() {
+            rendering_environment
+                .render_resources
+                .global_resources
+                .update_skybox_texture(
+                    render_context,
+                    &rendering_environment.pipeline_resources.global,
+                    Arc::clone(&environment_texture.skybox),
+                    Arc::clone(&environment_texture.irradiance),
+                    Arc::clone(&environment_texture.specular),
+                    &rendering_environment.render_resources.common_sampler,
+                )
+        }
 
         rendering_environment
             .render_resources

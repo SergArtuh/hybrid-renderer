@@ -6,14 +6,13 @@ use crate::{
     stage::frame_data::{FrameData, RenderItem},
 };
 
-#[derive(Default)]
 pub struct ForwardPass;
 
 impl ForwardPass {
     const CLEAR_COLOR: [f64; 4] = [0.1, 0.1, 0.1, 1.0];
 
     pub fn new() -> Self {
-        Self::default()
+        Self {}
     }
 
     pub fn execute<'a>(

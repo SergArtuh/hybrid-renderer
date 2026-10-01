@@ -9,7 +9,9 @@ use crate::{
         uniforms::{CameraUniform, ModelUniform},
     },
     renderer::{
-        passes::{forward::ForwardPass, postprocess::PostProcessPass, prepass::PrePass},
+        passes::{
+            forward::ForwardPass, postprocess::PostProcessPass, prepass::PrePass, sdf_pass::SDFPass,
+        },
         pipeline_resources::PipelineResources,
         pipeline_system::PipelineSystem,
     },
@@ -19,6 +21,7 @@ use crate::{
 
 pub struct RenderResources {
     pub prepass: PrePass,
+    pub sdf_pass: SDFPass,
     pub forward_pass: ForwardPass,
     pub postprocess_pass: PostProcessPass,
     pub global_resources: GlobalResources,
@@ -26,6 +29,7 @@ pub struct RenderResources {
     pub postprocess_resources: PostProcessResources,
     pub depth_texture_view: wgpu::TextureView,
     pub normal_buffer_view: wgpu::TextureView,
+    pub sdf_ao_buffer_view: wgpu::TextureView,
     pub default_textures: DefaultTextures,
     pub common_sampler: wgpu::Sampler,
     pub common_nearest_sampler: wgpu::Sampler,
@@ -71,21 +75,25 @@ impl RenderResources {
         let model_resources = ModelResources::new(render_context, &pipeline_resources.model);
         let depth_texture_view = Self::create_depth_texture(render_context);
         let normal_buffer_view = Self::create_normal_buffer(render_context);
+        let sdf_ao_buffer_view = Self::create_sdf_ao_buffer(render_context);
 
         let prepass = PrePass::new();
-        let forward_pass = ForwardPass::default();
+        let sdf_pass = SDFPass::new();
+        let forward_pass = ForwardPass::new();
 
         let postprocess_resources = PostProcessResources::new(render_context);
         let postprocess_pass = PostProcessPass::new();
 
         Self {
             prepass,
+            sdf_pass,
             forward_pass,
             postprocess_pass,
             global_resources,
             model_resources,
             depth_texture_view,
             normal_buffer_view,
+            sdf_ao_buffer_view,
             default_textures,
             common_sampler,
             common_nearest_sampler,
@@ -96,6 +104,7 @@ impl RenderResources {
     pub fn resize(&mut self, render_context: &RenderContext) {
         self.depth_texture_view = Self::create_depth_texture(render_context);
         self.normal_buffer_view = Self::create_normal_buffer(render_context);
+        self.sdf_ao_buffer_view = Self::create_sdf_ao_buffer(render_context);
     }
 
     fn create_depth_texture(render_context: &RenderContext) -> wgpu::TextureView {
@@ -135,6 +144,31 @@ impl RenderResources {
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba16Float,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        };
+        let texture = render_context.device.create_texture(&desc);
+        texture.create_view(&wgpu::TextureViewDescriptor::default())
+    }
+
+    fn create_sdf_ao_buffer(render_context: &RenderContext) -> wgpu::TextureView {
+        println!("Creating SDF AO buffer");
+
+        let size = wgpu::Extent3d {
+            width: render_context.config.width,
+            height: render_context.config.height,
+            depth_or_array_layers: 1,
+        };
+
+        let desc = wgpu::TextureDescriptor {
+            label: Some("SDF Buffer"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::STORAGE_BINDING,
             view_formats: &[],
         };
         let texture = render_context.device.create_texture(&desc);
