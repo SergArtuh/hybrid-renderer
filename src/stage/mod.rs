@@ -40,32 +40,37 @@ impl Stage {
 
     pub fn make_frame_data(&self) -> FrameData {
         let mut render_items = Vec::new();
+        let mut sdf_volumes = Vec::new();
         for model in &self.models {
             let mut model_render_items = Vec::new();
             Self::flatten_node(&model.root_node, &mut model_render_items, model.transform);
             render_items.extend(model_render_items);
+            sdf_volumes.extend(model.sdf_volumes.clone());
         }
 
-        let mut opaque_render_items = Vec::new();
-        let mut blend_render_items = Vec::new();
+        let mut render_items_opaque = Vec::new();
+        let mut render_items_transparent = Vec::new();
         for render_item in &render_items {
             let alpha_mode = match &render_item {
                 RenderItem::StaticMesh { material, .. } => material.alpha_mode(),
             };
             match alpha_mode {
-                AlphaMode::Opaque => opaque_render_items.push(render_item.clone()),
-                AlphaMode::Blend | AlphaMode::Mask => blend_render_items.push(render_item.clone()),
+                AlphaMode::Opaque => render_items_opaque.push(render_item.clone()),
+                AlphaMode::Blend | AlphaMode::Mask => {
+                    render_items_transparent.push(render_item.clone())
+                }
             }
         }
         let render_items_opaque_offset = 0;
-        let render_items_transparent_offset = opaque_render_items.len();
+        let render_items_transparent_offset = render_items_opaque.len();
 
         FrameData {
             camera_uniform: self.main_camera.get_uniform(),
-            render_items_opaque: opaque_render_items,
+            render_items_opaque,
             render_items_opaque_offset,
-            render_items_transparent: blend_render_items,
+            render_items_transparent,
             render_items_transparent_offset,
+            sdf_volumes,
             skydome: self.skydome.clone(),
         }
     }

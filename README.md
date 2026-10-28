@@ -50,6 +50,20 @@ A real-time 3D rendering engine written in Rust on top of [wgpu](https://github.
    python scripts/serve.py
    ```
 
+## Generating Signed Distance Field (SDF) Textures
+
+The sdf textures are generated offline. For doing this, you can use the provided Python utility `scripts/generate_sdf.py` which generates Signed Distance Field (SDF) texture atlas from 3D models (`.glb` files).
+
+Usage example:
+```bash
+python scripts/generate_sdf.py path/to/model.glb -o path/to/stf_atlas.exr -r 64
+```
+
+Options:
+- `input` — Path to the input `.glb` file.
+- `-o, --output` — Path to the output SDF texture atlas file.
+- `-r, --resolution` — Grid resolution per axis (default: `64`).
+
 ## Asset Management
 
 Large 3D models and textures are kept out of the git repository to maintain a clean history. They are managed and served through two channels:

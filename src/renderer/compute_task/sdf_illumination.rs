@@ -1,5 +1,10 @@
+use wgpu::util::DeviceExt;
+
 use crate::{
-    core::compute_task::{ComputeTaskInstance, ComputeTaskTrait, ComputeTaskType},
+    core::{
+        compute_task::{ComputeTaskInstance, ComputeTaskTrait, ComputeTaskType},
+        uniforms::SDFUniform,
+    },
     renderer::{RenderingEnvironment, compute_task::ComputeTaskFactory},
 };
 
@@ -9,6 +14,9 @@ pub struct TaskDescriptor {
     pub input_normal_view: wgpu::TextureView,
     pub input_depth_view: wgpu::TextureView,
     pub output_ao_view: wgpu::TextureView,
+    pub global_bounding_group: wgpu::BindGroup,
+    pub sdf_texture_view: wgpu::TextureView,
+    pub sdf_uniform: SDFUniform,
 
     pub width: u32,
     pub height: u32,
@@ -63,7 +71,33 @@ impl ComputeTaskTrait for Task {
                 ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                 count: None,
             },
+            wgpu::BindGroupLayoutEntry {
+                binding: 4,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 5,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new(
+                        std::mem::size_of::<SDFUniform>() as u64
+                    ),
+                },
+                count: None,
+            },
         ]
+    }
+
+    fn use_global_bindings() -> bool {
+        true
     }
 
     fn create_instance(
@@ -71,11 +105,13 @@ impl ComputeTaskTrait for Task {
         desc: Self::Descriptor,
         layout: &wgpu::BindGroupLayout,
     ) -> Result<ComputeTaskInstance, anyhow::Error> {
-        // let cubemap_view = desc
-        //     .input_normal_map
-        //     .array_view
-        //     .as_ref()
-        //     .expect("Cubemap array view should be present");
+        let sdf_uniform_buffer = render_env.render_context.device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Sdf Uniform Buffer"),
+                contents: bytemuck::cast_slice(&[desc.sdf_uniform]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            },
+        );
 
         let bind_group =
             render_env
@@ -102,6 +138,20 @@ impl ComputeTaskTrait for Task {
                                 &render_env.render_resources.common_nearest_sampler,
                             ),
                         },
+                        wgpu::BindGroupEntry {
+                            binding: 4,
+                            resource: wgpu::BindingResource::TextureView(&desc.sdf_texture_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 5,
+                            resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                                buffer: &sdf_uniform_buffer,
+                                offset: 0,
+                                size: wgpu::BufferSize::new(
+                                    std::mem::size_of::<SDFUniform>() as u64
+                                ),
+                            }),
+                        },
                     ],
                     label: Some("Sdf Illumination Bind Group"),
                 });
@@ -111,7 +161,7 @@ impl ComputeTaskTrait for Task {
 
         Ok(ComputeTaskInstance {
             task_type: Self::TYPE,
-            bind_group,
+            bind_group: vec![(0, desc.global_bounding_group), (1, bind_group)],
             dispatch_size: (
                 (width + workgroup_size - 1) / workgroup_size,
                 (height + workgroup_size - 1) / workgroup_size,
@@ -137,6 +187,8 @@ impl<'a> Provider<'a> {
         input_normal_view: &wgpu::TextureView,
         input_depth_view: &wgpu::TextureView,
         output_ao_view: &wgpu::TextureView,
+        sdf_texture_view: &wgpu::TextureView,
+        sdf_uniform: &SDFUniform,
         width: u32,
         height: u32,
     ) -> Result<(), anyhow::Error> {
@@ -161,6 +213,14 @@ impl<'a> Provider<'a> {
             input_normal_view: input_normal_view.clone(),
             input_depth_view: input_depth_view.clone(),
             output_ao_view: output_ao_view.clone(),
+            sdf_texture_view: sdf_texture_view.clone(),
+            sdf_uniform: sdf_uniform.clone(),
+            global_bounding_group: self
+                .render_env
+                .render_resources
+                .global_resources
+                .bind_group
+                .clone(),
             width,
             height,
         });

@@ -5,6 +5,7 @@ pub mod math;
 pub mod mesh;
 pub mod model_node;
 pub mod render_context;
+pub mod sdf_volume;
 pub mod texture;
 pub mod texture_builder;
 pub mod uniforms;

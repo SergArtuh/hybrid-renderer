@@ -1,3 +1,5 @@
+use serde::Deserialize;
+
 use crate::core::math::{Mat4, Vec4};
 
 #[repr(C)]
@@ -50,6 +52,30 @@ impl SpecularPrefilterUniform {
     pub fn new(roughness: f32) -> Self {
         Self {
             data: [roughness, 0.0, 0.0, 0.0],
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub(crate) struct RawSdfConfig {
+    pub grid_resolution: u32,
+    pub sdf_inv_world_matrix: [[f32; 4]; 4],
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct SDFUniform {
+    pub inv_world: Mat4,
+    pub tiles_per_side: u32,
+    pub _padding: [u32; 3],
+}
+
+impl SDFUniform {
+    pub fn new(inv_world: Mat4, tiles_per_side: u32) -> Self {
+        Self {
+            inv_world,
+            tiles_per_side,
+            _padding: [0; 3],
         }
     }
 }

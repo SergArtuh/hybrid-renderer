@@ -1,6 +1,6 @@
 use crate::assets::assets_resources::{
-    AssetCallback, AssetData, AssetResource, CompletedAssetTask, ModelAssetData, SkydomeAssetData,
-    TextureAssetData,
+    AssetCallback, AssetData, AssetResource, CompletedAssetTask, ModelAssetData,
+    SdfVolumeAssetData, SkydomeAssetData, TextureAssetData,
 };
 use crate::assets::model::ModelAsset;
 use crate::assets::skydome::{Skydome, SkydomeDescriptor};
@@ -10,10 +10,12 @@ use crate::assets::util::gltf_extended_decorator::{
 use crate::core::material::{AlphaMode, Material, PhysicalMaterial, SkydomeEnvironmentMaterial};
 use crate::core::mesh::{Mesh, MeshData};
 use crate::core::model_node::ModelNode;
+use crate::core::sdf_volume::SdfVolume;
 use crate::core::texture::Texture;
 use crate::core::texture_builder::{
-    ComponentPrecision, TextureBuilder, TextureChannels, TextureDescriptor,
+    ComponentPrecision, TextureBuilder, TextureChannels, TextureDescriptor, TextureFormatDescriptor,
 };
+use crate::core::uniforms::SDFUniform;
 use crate::renderer::RenderingEnvironment;
 use crate::renderer::compute_task::{
     DiffuseIrradianceProvider, EquirectToCubemapProvider, MipmapGeneratorProvider,
@@ -29,6 +31,9 @@ use std::collections::{HashMap, HashSet};
 use std::mem;
 use std::path::Path;
 use std::sync::Arc;
+
+use crate::core::uniforms::RawSdfConfig;
+use futures_util::future::try_join;
 
 use uuid::Uuid;
 
@@ -137,6 +142,7 @@ impl<'a> AssetManager<'a> {
                     &render_env.render_context.queue,
                 )
                 .from_bytes(&texture_data.bytes)
+                .with_format(texture_data.descriptor.format)
                 // TODO: check descriptor for filter mode
                 .with_filter(wgpu::FilterMode::Nearest, wgpu::FilterMode::Nearest)
                 .build();
@@ -155,6 +161,26 @@ impl<'a> AssetManager<'a> {
                 let model = Self::create_model(render_env, model_data.bytes).unwrap();
                 if let AssetCallback::Model(callback) = task.callback {
                     callback(render_env, stage, model);
+                }
+            } else if let AssetData::SdfVolume(sdf_volume_data) = task.data {
+                let texture = TextureBuilder::new(
+                    &render_env.render_context.device,
+                    &render_env.render_context.queue,
+                )
+                .from_bytes(&sdf_volume_data.texture_data.bytes)
+                .with_format(sdf_volume_data.texture_data.descriptor.format)
+                //.with_filter(wgpu::FilterMode::Nearest, wgpu::FilterMode::Nearest)
+                .build();
+
+                let sdf_uniform = Self::make_sdf_uniform(sdf_volume_data.metadata_bytes).unwrap();
+
+                let sdf_volume = SdfVolume {
+                    world_to_sdf_matrix: glam::Mat4::IDENTITY.inverse(),
+                    texture_view: texture.view.as_ref().clone(),
+                    sdf_uniform,
+                };
+                if let AssetCallback::SdfVolume(callback) = task.callback {
+                    callback(render_env, stage, sdf_volume);
                 }
             } else if let AssetData::Bytes(bytes) = task.data
                 && let AssetCallback::Bytes(callback) = task.callback
@@ -193,6 +219,61 @@ impl<'a> AssetManager<'a> {
             } else {
                 #[cfg(debug_assertions)]
                 eprintln!("[AssetManager] Failed to load texture: {}", path);
+            }
+        });
+    }
+
+    pub fn load_sdf_from_texture<F>(
+        &self,
+        texture_path_or_url: impl AsRef<Path> + Send + 'static,
+        metadata_path_or_url: impl AsRef<Path> + Send + 'static,
+        on_loaded: F,
+        loading_group: Option<SharedAssetLoadingGroup>,
+    ) where
+        F: FnOnce(&mut RenderingEnvironment, &mut Stage, SdfVolume) + Send + 'static,
+    {
+        let texture_path = texture_path_or_url.as_ref().to_string_lossy().to_string();
+        let metadata_path = metadata_path_or_url.as_ref().to_string_lossy().to_string();
+        let sender = self.sender.clone();
+        let callback = Box::new(on_loaded);
+
+        let descriptor = TextureDescriptor {
+            format: TextureFormatDescriptor {
+                channels: TextureChannels::RGBA,
+                precision: ComponentPrecision::F16,
+                is_srgb: false,
+            },
+            ..Default::default()
+        };
+
+        let uid = Uuid::new_v4();
+
+        if let Some(group) = &loading_group {
+            group.as_ref().borrow_mut().register_task(uid);
+        }
+
+        Self::spawn_task(async move {
+            let fetched_data = try_join(
+                Self::fetch_bytes(&texture_path),
+                Self::fetch_bytes(&metadata_path),
+            )
+            .await;
+
+            if let Ok((bytes_texture, bytes_metadata)) = fetched_data {
+                let _ = sender.send(CompletedAssetTask {
+                    data: AssetData::SdfVolume(SdfVolumeAssetData {
+                        metadata_bytes: bytes_metadata,
+                        texture_data: TextureAssetData {
+                            bytes: bytes_texture,
+                            descriptor,
+                        },
+                    }),
+                    callback: AssetCallback::SdfVolume(callback),
+                    uid,
+                });
+            } else {
+                #[cfg(debug_assertions)]
+                eprintln!("[AssetManager] Failed to load texture: {}", texture_path);
             }
         });
     }
@@ -679,5 +760,17 @@ impl<'a> AssetManager<'a> {
                 std::fs::read(path).map_err(|e| format!("Failed to read file '{}': {}", path, e))
             }
         }
+    }
+
+    pub fn make_sdf_uniform(bytes: Vec<u8>) -> Result<SDFUniform, String> {
+        let json_string =
+            String::from_utf8(bytes).map_err(|e| format!("Invalid UTF-8 sequence: {}", e))?;
+
+        let config: RawSdfConfig = serde_json::from_str(&json_string)
+            .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+
+        let inv_world = glam::Mat4::from_cols_array_2d(&config.sdf_inv_world_matrix);
+
+        Ok(SDFUniform::new(inv_world, config.grid_resolution))
     }
 }

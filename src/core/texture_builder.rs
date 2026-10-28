@@ -1,6 +1,12 @@
 use super::texture::Texture;
+use exr::prelude::{ReadChannels, ReadLayers};
 use half::f16;
-use std::sync::Arc;
+use std::{io::Cursor, sync::Arc};
+
+struct PixelBuffer {
+    width: usize,
+    pixels: Vec<(f32, f32, f32, f32)>,
+}
 
 pub enum TextureSource<'a> {
     Empty,
@@ -34,6 +40,16 @@ pub struct TextureFormatDescriptor {
     pub channels: TextureChannels,
     pub precision: ComponentPrecision,
     pub is_srgb: bool,
+}
+
+impl Default for TextureFormatDescriptor {
+    fn default() -> Self {
+        Self {
+            channels: TextureChannels::RGBA,
+            precision: ComponentPrecision::U8,
+            is_srgb: false,
+        }
+    }
 }
 
 enum RawTextureData {
@@ -140,6 +156,7 @@ pub struct TextureDescriptor {
     pub address_mode: TextureAddressMode,
     pub mip_level_count: u32,
     pub is_cubemap: bool,
+    pub format: TextureFormatDescriptor,
 }
 
 pub struct TextureBuilder<'a> {
@@ -198,6 +215,11 @@ impl<'a> TextureBuilder<'a> {
 
     pub fn with_srgb(mut self, is_srgb: bool) -> Self {
         self.format.is_srgb = is_srgb;
+        self
+    }
+
+    pub fn with_format(mut self, format: TextureFormatDescriptor) -> Self {
+        self.format = format;
         self
     }
 
@@ -398,10 +420,7 @@ impl<'a> TextureBuilder<'a> {
 
     fn resolve_image_data(&self, source: TextureSource) -> (u32, u32, RawTextureData) {
         match source {
-            TextureSource::Bytes(bytes) => {
-                let img = image::load_from_memory(bytes).expect("Failed to load image from memory");
-                self.resolve_dynamic_image_data(img)
-            }
+            TextureSource::Bytes(bytes) => self.resolve_image_from_bytes(bytes),
             TextureSource::Image(img) => self.resolve_dynamic_image_data(img),
             TextureSource::Raw {
                 pixels,
@@ -409,6 +428,18 @@ impl<'a> TextureBuilder<'a> {
                 height,
             } => self.resolve_raw_texture_data(pixels, width, height),
             TextureSource::Empty => self.resolve_empty_texture_data(),
+        }
+    }
+
+    fn resolve_image_from_bytes(&self, bytes: &[u8]) -> (u32, u32, RawTextureData) {
+        let image_format = image::guess_format(bytes).expect("Unknown image format");
+
+        match image_format {
+            image::ImageFormat::OpenExr => Self::load_exr_from_bytes(bytes, &self.format),
+            _ => {
+                let img = image::load_from_memory(bytes).expect("Failed to load image from memory");
+                self.resolve_dynamic_image_data(img)
+            }
         }
     }
 
@@ -590,6 +621,100 @@ impl<'a> TextureBuilder<'a> {
                 height,
                 RawTextureData::F32(vec![0.0f32; total_elements]),
             )
+        }
+    }
+    fn load_exr_from_bytes(
+        bytes: &[u8],
+        format: &TextureFormatDescriptor,
+    ) -> (u32, u32, RawTextureData) {
+        let cursor = Cursor::new(bytes);
+        let image = exr::prelude::read()
+            .no_deep_data()
+            .largest_resolution_level()
+            .rgba_channels(
+                |resolution, _channels| PixelBuffer {
+                    width: resolution.x(),
+                    pixels: vec![
+                        (0.0_f32, 0.0_f32, 0.0_f32, 1.0_f32);
+                        resolution.x() * resolution.y()
+                    ],
+                },
+                |buffer, position, (r, g, b, a)| {
+                    let index = position.y() * buffer.width + position.x();
+                    buffer.pixels[index] = (r, g, b, a);
+                },
+            )
+            .first_valid_layer()
+            .all_attributes()
+            .from_unbuffered(cursor)
+            .expect("Failed to decode EXR");
+
+        let width = image.layer_data.size.x();
+        let height = image.layer_data.size.y();
+
+        let pixel_data = image.layer_data.channel_data.pixels;
+
+        let channels = match format.channels {
+            TextureChannels::R => 1,
+            TextureChannels::RG => 2,
+            TextureChannels::RGB => 4,
+            TextureChannels::RGBA => 4,
+        };
+
+        match format.precision {
+            ComponentPrecision::U8 => {
+                let mut result = Vec::with_capacity(pixel_data.pixels.len() * channels);
+
+                for (r, g, b, a) in pixel_data.pixels {
+                    let rgba = [r, g, b, a];
+
+                    for value in rgba.iter().take(channels) {
+                        result.push((value.clamp(0.0, 1.0) * 255.0).round() as u8);
+                    }
+                }
+                return (width as u32, height as u32, RawTextureData::U8(result));
+            }
+
+            ComponentPrecision::F16 => {
+                let mut result = Vec::with_capacity(pixel_data.pixels.len() * channels);
+
+                let mut min_val = f32::MAX;
+                let mut max_val = f32::MIN;
+
+                for (r, g, b, a) in pixel_data.pixels {
+                    let rgba = [r, g, b, a];
+
+                    min_val = f32::min(min_val, rgba[0]);
+                    max_val = f32::max(max_val, rgba[0]);
+
+                    for value in rgba.iter().take(channels) {
+                        result.push(f16::from_f32(*value));
+                    }
+                }
+                return (width as u32, height as u32, RawTextureData::F16(result));
+            }
+
+            ComponentPrecision::F32 => {
+                let mut result = Vec::with_capacity(pixel_data.pixels.len() * channels);
+
+                let mut min_val = f32::MAX;
+                let mut max_val = f32::MIN;
+
+                for (r, g, b, a) in pixel_data.pixels {
+                    let rgba = [r, g, b, a];
+
+                    min_val = f32::min(min_val, rgba[0]);
+                    max_val = f32::max(max_val, rgba[0]);
+
+                    for value in rgba.iter().take(channels) {
+                        result.push(*value);
+                    }
+                }
+                return (width as u32, height as u32, RawTextureData::F32(result));
+            }
+            ComponentPrecision::Auto => {
+                panic!("ComponentPrecision::Auto must be resolved before conversion")
+            }
         }
     }
 }

@@ -104,7 +104,7 @@ impl ComputeTaskTrait for Task {
 
         Ok(ComputeTaskInstance {
             task_type: Self::TYPE,
-            bind_group,
+            bind_group: vec![(0, bind_group)],
             dispatch_size: (
                 (mip_width + workgroup_size - 1) / workgroup_size,
                 (mip_height + workgroup_size - 1) / workgroup_size,
@@ -244,7 +244,8 @@ impl<'a> Provider<'a> {
             current_src = temp_mip_out;
         }
 
-        let _ = self.render_env
+        let _ = self
+            .render_env
             .render_context
             .device
             .poll(wgpu::PollType::wait_indefinitely());

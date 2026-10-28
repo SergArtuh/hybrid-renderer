@@ -47,5 +47,5 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let gamma_corrected = tone_mapped_rgb;
 
     //return vec4<f32>(gamma_corrected, 1.0-depth);
-     return vec4<f32>(gamma_corrected, 0.7);
+     return vec4<f32>(gamma_corrected, 0.3);
 }

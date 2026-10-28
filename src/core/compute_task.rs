@@ -12,7 +12,7 @@ pub enum ComputeTaskType {
 
 pub struct ComputeTaskInstance {
     pub task_type: ComputeTaskType,
-    pub bind_group: wgpu::BindGroup,
+    pub bind_group: Vec<(u32, wgpu::BindGroup)>,
     pub dispatch_size: (u32, u32, u32),
 }
 
@@ -35,4 +35,12 @@ pub trait ComputeTaskTrait: Sized {
     }
 
     fn get_bind_group_layout_entries() -> Vec<wgpu::BindGroupLayoutEntry>;
+
+    fn use_global_bindings() -> bool {
+        false
+    }
+
+    fn use_model_bindings() -> bool {
+        false
+    }
 }

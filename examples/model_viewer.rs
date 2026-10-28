@@ -63,7 +63,8 @@ impl Application for ModelViewerApp {
             //"https://pub-227d210eb508481688aaf1983484a58a.r2.dev/porsche.glb",
             move |_, stage, asset_models| {
                 for model_node in &asset_models.scene_roots {
-                    let mut model = Model::new(Arc::clone(model_node), glam::Mat4::IDENTITY);
+                    let mut model =
+                        Model::new(Arc::clone(model_node), glam::Mat4::IDENTITY, vec![]);
                     model.transform = glam::Mat4::from_translation(glam::Vec3::new(0.0, 0.6, 0.0));
 
                     // Remove the fake shadows in the floor

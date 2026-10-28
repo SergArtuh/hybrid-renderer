@@ -56,7 +56,7 @@ impl Application for SpriteAnimationApp {
                     hybrid_renderer::core::material::Material::Sprite(sprite_material),
                 ));
                 Arc::get_mut(&mut model_node).unwrap().name = SPRITE_NODE_NAME.to_string();
-                let model = Model::new(model_node.clone(), glam::Mat4::IDENTITY);
+                let model = Model::new(model_node.clone(), glam::Mat4::IDENTITY, vec![]);
                 stage.add_model(model);
             },
             None,
@@ -64,6 +64,7 @@ impl Application for SpriteAnimationApp {
 
         AssetManager::new(&app_context.render_env).load_skydome(
             "https://pub-227d210eb508481688aaf1983484a58a.r2.dev/modern_buildings_night_1k.exr",
+            //"assets/zwartkops_curve_sunset_4k.exr",
             SkydomeDescriptor {
                 radius: 150.0,
                 factor: 0.95,

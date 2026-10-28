@@ -96,7 +96,7 @@ impl ComputeTaskTrait for Task {
 
         Ok(ComputeTaskInstance {
             task_type: Self::TYPE,
-            bind_group,
+            bind_group: vec![(0, bind_group)],
             dispatch_size: (
                 (width + workgroup_size - 1) / workgroup_size,
                 (height + workgroup_size - 1) / workgroup_size,

@@ -70,10 +70,19 @@ impl PipelineSystem {
             },
         );
 
+        let mut layouts: Vec<Option<&wgpu::BindGroupLayout>> = Vec::new();
+        if T::use_global_bindings() {
+            layouts.push(Some(&render_env.pipeline_resources.global));
+        }
+        if T::use_model_bindings() {
+            layouts.push(Some(&render_env.pipeline_resources.model));
+        }
+        layouts.push(Some(&bind_group_layout));
+
         let pipeline_layout = render_env.render_context.device.create_pipeline_layout(
             &wgpu::PipelineLayoutDescriptor {
                 label: Some(&format!("{:?} Layout", task_type)),
-                bind_group_layouts: &[Some(&bind_group_layout)],
+                bind_group_layouts: &layouts,
                 immediate_size: 0,
             },
         );

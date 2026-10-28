@@ -129,7 +129,9 @@ impl<'a> ComputeExecutor<'a> {
         {
             let mut cpass = encoder.begin_compute_pass(&Default::default());
             cpass.set_pipeline(pipeline);
-            cpass.set_bind_group(0, &task_instance.bind_group, &[]);
+            for (layout_idx, bind_group) in &task_instance.bind_group {
+                cpass.set_bind_group(*layout_idx, bind_group, &[]);
+            }
             cpass.dispatch_workgroups(
                 task_instance.dispatch_size.0,
                 task_instance.dispatch_size.1,

@@ -1,5 +1,10 @@
 use hybrid_renderer::assets::asset_manager::{AssetLoadingGroup, AssetManager};
 use hybrid_renderer::assets::model::Model;
+use hybrid_renderer::core::sdf_volume::SdfVolume;
+use hybrid_renderer::core::texture_builder::{
+    ComponentPrecision, TextureChannels, TextureDescriptor, TextureFormatDescriptor,
+};
+use hybrid_renderer::core::uniforms::SDFUniform;
 use hybrid_renderer::input::camera_controller::{
     CameraController, OrbitCameraController, OrbitCameraControllerDescriptor,
 };
@@ -16,6 +21,8 @@ use hybrid_renderer::app::{AppContext, Application};
 use hybrid_renderer::main_app;
 
 const CAMERA_DISTANCE: f32 = 5.0;
+//const STAGE_MODEL_NAME: &str = "porsche";
+const STAGE_MODEL_NAME: &str = "truck";
 
 struct SdfViewerApp {}
 
@@ -45,8 +52,8 @@ impl Application for SdfViewerApp {
         let loading_group = AssetLoadingGroup::create_parallel(&mut app_context.render_env);
 
         AssetManager::new(&app_context.render_env).load_skydome(
-            //"assets/zwartkops_curve_sunset_4k.exr",
-            "https://pub-227d210eb508481688aaf1983484a58a.r2.dev/zwartkops_curve_sunset_4k.exr",
+            "assets/zwartkops_curve_sunset_4k.exr",
+            //"https://pub-227d210eb508481688aaf1983484a58a.r2.dev/zwartkops_curve_sunset_4k.exr",
             SkydomeDescriptor {
                 radius: 150.0,
                 factor: 0.95,
@@ -60,11 +67,15 @@ impl Application for SdfViewerApp {
 
         AssetManager::new(&app_context.render_env).load_model(
             //"assets/models/porsche.glb",
-            "https://pub-227d210eb508481688aaf1983484a58a.r2.dev/porsche.glb",
+            // "assets/models/box.glb",
+            format!("assets/models/{}.glb", STAGE_MODEL_NAME),
+            //"https://pub-227d210eb508481688aaf1983484a58a.r2.dev/porsche.glb",
             move |_, stage, asset_models| {
                 for model_node in &asset_models.scene_roots {
-                    let mut model = Model::new(Arc::clone(model_node), glam::Mat4::IDENTITY);
-                    model.transform = glam::Mat4::from_translation(glam::Vec3::new(0.0, 0.6, 0.0));
+                    let mut model =
+                        Model::new(Arc::clone(model_node), glam::Mat4::IDENTITY, vec![]);
+                    //model.transform = glam::Mat4::from_translation(glam::Vec3::new(0.0, 0.6, 0.0));
+                    model.name = STAGE_MODEL_NAME.to_string();
 
                     println!("Second model loaded");
 
@@ -75,6 +86,24 @@ impl Application for SdfViewerApp {
 
                     stage.add_model(model);
                 }
+            },
+            Some(Arc::clone(&loading_group)),
+        );
+
+        AssetManager::new(&app_context.render_env).load_sdf_from_texture(
+            // "assets/models/box_sdf_64_64_64.exr",
+            // "assets/models/box_sdf_64_64_64.json",
+            format!("assets/models/{}.exr", STAGE_MODEL_NAME),
+            format!("assets/models/{}.json", STAGE_MODEL_NAME),
+            //"assets/models/car_sdf_64x64x64.exr",
+            //"https://pub-227d210eb508481688aaf1983484a58a.r2.dev/zwartkops_curve_sunset_4k.exr",
+            move |_, stage, sdf_volume| {
+                let model = stage
+                    .models
+                    .iter_mut()
+                    .find(|model| model.name == STAGE_MODEL_NAME)
+                    .unwrap();
+                model.sdf_volumes.push(sdf_volume);
             },
             Some(Arc::clone(&loading_group)),
         );

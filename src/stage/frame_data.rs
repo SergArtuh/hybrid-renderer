@@ -1,6 +1,7 @@
 use crate::assets::skydome::Skydome;
 use crate::core::material::{EnvironmentMap, Material};
 use crate::core::mesh::Mesh;
+use crate::core::sdf_volume::SdfVolume;
 use crate::core::uniforms::CameraUniform;
 use std::sync::Arc;
 
@@ -28,6 +29,7 @@ pub struct FrameData {
     pub render_items_transparent: Vec<RenderItem>,
     pub render_items_transparent_offset: usize,
     pub skydome: Option<Skydome>,
+    pub sdf_volumes: Vec<SdfVolume>,
 }
 
 impl FrameData {

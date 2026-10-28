@@ -11,7 +11,7 @@ use crate::{
         model::ModelAsset,
         skydome::{Skydome, SkydomeDescriptor},
     },
-    core::{texture::Texture, texture_builder::TextureDescriptor},
+    core::{sdf_volume::SdfVolume, texture::Texture, texture_builder::TextureDescriptor},
     renderer::RenderingEnvironment,
     stage::Stage,
 };
@@ -33,11 +33,17 @@ pub struct ModelAssetData {
     pub bytes: Vec<u8>,
 }
 
+pub struct SdfVolumeAssetData {
+    pub metadata_bytes: Vec<u8>,
+    pub texture_data: TextureAssetData,
+}
+
 pub enum AssetData {
     Bytes(Vec<u8>),
     Texture(TextureAssetData),
     Skydome(SkydomeAssetData),
     Model(ModelAssetData),
+    SdfVolume(SdfVolumeAssetData),
 }
 
 pub type AssetTextureCallback =
@@ -49,6 +55,9 @@ pub type AssetSkydomeCallback =
 pub type AssetModelCallback =
     Box<dyn FnOnce(&mut RenderingEnvironment, &mut Stage, ModelAsset) + Send + 'static>;
 
+pub type AssetSdfVolumeCallback =
+    Box<dyn FnOnce(&mut RenderingEnvironment, &mut Stage, SdfVolume) + Send + 'static>;
+
 pub type AssetBytesCallback =
     Box<dyn FnOnce(&mut RenderingEnvironment, &mut Stage, Vec<u8>) + Send + 'static>;
 
@@ -56,6 +65,7 @@ pub enum AssetCallback {
     Texture(AssetTextureCallback),
     Skydome(AssetSkydomeCallback),
     Model(AssetModelCallback),
+    SdfVolume(AssetSdfVolumeCallback),
     Bytes(AssetBytesCallback),
 }
 
